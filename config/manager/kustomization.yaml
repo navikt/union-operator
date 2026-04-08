@@ -5,4 +5,4 @@ kind: Kustomization
 images:
 - name: controller
   newName: europe-west1-docker.pkg.dev/nav-data-images-prod/dataplattform-infra/union-operator
-  newTag: v1
+  newTag: v2
