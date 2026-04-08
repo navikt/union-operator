@@ -31,7 +31,9 @@ type UnionTeamServiceAccountsSpec struct {
 	// More info: https://book.kubebuilder.io/reference/markers/crd-validation.html
 
 	// +required
-	Name string `json:"name"`
+	Project string `json:"project"`
+	// +required
+	Domain string `json:"domain"`
 	// +required
 	ServiceAccounts []UnionServiceAccount `json:"serviceAccounts"`
 }
