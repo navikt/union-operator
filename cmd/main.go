@@ -37,6 +37,8 @@ import (
 
 	datanavnov1 "github.com/navikt/union-operator/api/v1"
 	"github.com/navikt/union-operator/internal/controller"
+
+	iam "github.com/nais/liberator/pkg/apis/iam.cnrm.cloud.google.com/v1beta1"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -49,6 +51,7 @@ func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 
 	utilruntime.Must(datanavnov1.AddToScheme(scheme))
+	utilruntime.Must(iam.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
 }
 

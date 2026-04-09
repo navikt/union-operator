@@ -18,8 +18,9 @@ package controller
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
-	"strings"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -45,8 +46,8 @@ type UnionTeamServiceAccountsReconciler struct {
 // +kubebuilder:rbac:groups=data.nav.no,resources=unionteamserviceaccounts/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=data.nav.no,resources=unionteamserviceaccounts/finalizers,verbs=update
 // +kubebuilder:rbac:groups=core,resources=serviceaccounts,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=iam.cnrm.cloud.google.com,resources=gcpiamserviceaccounts,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=iam.cnrm.cloud.google.com,resources=gcpiampolicymembers,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=iam.cnrm.cloud.google.com,resources=iamserviceaccounts,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=iam.cnrm.cloud.google.com,resources=iampolicymembers,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -121,26 +122,26 @@ func (r *UnionTeamServiceAccountsReconciler) Reconcile(ctx context.Context, req 
 	return ctrl.Result{}, nil
 }
 
-func (r *UnionTeamServiceAccountsReconciler) createServiceAccountForDomain(ctx context.Context, project, domain string, serviceAccount UnionServiceAccount) error {
+func (r *UnionTeamServiceAccountsReconciler) createServiceAccountForDomain(ctx context.Context, project, domain string, serviceAccount datanavnov1.UnionServiceAccount) error {
+	log := logf.FromContext(ctx)
 	googleServiceAccountName := googleServiceAccountName(project, domain, serviceAccount.Name)
-	iamServiceAccount := &iam.GCPIAMServiceAccount{
+	iamServiceAccount := &iam.IAMServiceAccount{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "IAMServiceAccount",
 			APIVersion: "iam.cnrm.cloud.google.com/v1beta1",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:     googleServiceAccountName,
+			Name:      googleServiceAccountName,
 			Namespace: fmt.Sprintf("%s-%s", project, domain),
 			Annotations: map[string]string{
 				"cnrm.cloud.google.com/project-id": "nav-data-union-restricted-dev",
 			},
 		},
-		Spec: iam.GCPIAMServiceAccountSpec{
-			DisplayName: serviceAccount.Name,
-			Description: fmt.Sprintf("Union service account %s for domain %s in project %s", serviceAccount.Name, domain, project),
+		Spec: iam.IAMServiceAccountSpec{
+			DisplayName: fmt.Sprintf("Union service account %s for domain %s in project %s", serviceAccount.Name, domain, project),
 		},
 	}
-	err = r.Create(ctx, iamServiceAccount)
+	err := r.Create(ctx, iamServiceAccount)
 	if err != nil {
 		log.Error(err, "Failed to create IAM service account")
 		return err

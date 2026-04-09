@@ -45,8 +45,8 @@ rules:
 - apiGroups:
   - iam.cnrm.cloud.google.com
   resources:
-  - gcpiampolicymembers
-  - gcpiamserviceaccounts
+  - iampolicymembers
+  - iamserviceaccounts
   verbs:
   - create
   - delete
