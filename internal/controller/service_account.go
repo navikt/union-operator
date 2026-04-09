@@ -2,11 +2,8 @@ package controller
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 
-	"github.com/go-logr/logr"
 	datanavnov1 "github.com/navikt/union-operator/api/v1"
 	v1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -23,27 +20,6 @@ const (
 	UnionDomainLabel  = "union.nav.no/domain"
 )
 
-type UnionEnv struct {
-	Project string
-	Domain string
-	ServiceAccounts []datanavnov1.UnionServiceAccount
-}
-
-func (u *UnionEnv) Namespace() string {
-	return fmt.Sprintf("%s-%s", u.Project, u.Domain)
-}
-
-func (u *UnionEnv) googleServiceAccountName(serviceAccountName string) string {
-	name := fmt.Sprintf("%s-%s-%s", serviceAccountName, u.Domain, u.Project)
-	hash := sha256.Sum256([]byte(name))
-
-	prefixLength := 23
-	if len(name) < 23 {
-		prefixLength = len(name)
-	}
-	return fmt.Sprintf("%s-%s", name[:prefixLength], hex.EncodeToString(hash[:])[:5])
-}
-
 func (r *UnionTeamServiceAccountsReconciler) updateServiceAccountsForDomain(ctx context.Context, unionEnv *UnionEnv) error {
 	log := logf.FromContext(ctx)
 	existing := &v1.ServiceAccountList{}
@@ -57,14 +33,12 @@ func (r *UnionTeamServiceAccountsReconciler) updateServiceAccountsForDomain(ctx 
 		return err
 	}
 
-
-
-	if err := r.createOrUpdateServiceAccounts(ctx, unionEnv, existing.Items, log); err != nil {
+	if err := r.createOrUpdateServiceAccounts(ctx, unionEnv, existing.Items); err != nil {
 		log.Error(err, "Failed to create or update service accounts for project and domain", "project", unionEnv.Project, "domain", unionEnv.Domain)
 		return err
 	}
 
-	if err := r.cleanupRemovedServiceAccounts(ctx, unionEnv, existing.Items, log); err != nil {
+	if err := r.cleanupRemovedServiceAccounts(ctx, unionEnv, existing.Items); err != nil {
 		log.Error(err, "Failed to cleanup removed service accounts for project and domain", "project", unionEnv.Project, "domain", unionEnv.Domain)
 		return err
 	}
@@ -72,67 +46,22 @@ func (r *UnionTeamServiceAccountsReconciler) updateServiceAccountsForDomain(ctx 
 	return nil
 }
 
-func (r *UnionTeamServiceAccountsReconciler) createOrUpdateServiceAccounts(ctx context.Context, unionEnv *UnionEnv, existing []v1.ServiceAccount, log logr.Logger) error {
-		for _, sa := range unionEnv.ServiceAccounts {
-			existing := findByField(existing, sa.Name, func(sa v1.ServiceAccount) string { return sa.Name }) 
-			if existing != nil {
-				if err := r.updateServiceAccountForDomain(ctx, unionEnv, sa); err != nil {
-					log.Error(err, "Failed to cleanup Google service account", "name", sa.Name)
-					return err
-				}
-			} else {
-				err := r.createServiceAccountForDomain(ctx, unionEnv, sa)
-				if err != nil {
-					log.Error(err, "Failed to create service account for domain", "project", unionEnv.Project, "domain", unionEnv.Domain, "serviceAccount", sa.Name)
-					return err
-				}
+func (r *UnionTeamServiceAccountsReconciler) createOrUpdateServiceAccounts(
+	ctx context.Context,
+	unionEnv *UnionEnv,
+	existing []v1.ServiceAccount,
+) error {
+	log := logf.FromContext(ctx)
+	for _, sa := range unionEnv.ServiceAccounts {
+		existing := findByField(existing, sa.Name, func(sa v1.ServiceAccount) string { return sa.Name })
+		if existing == nil {
+			err := r.createServiceAccountForDomain(ctx, unionEnv, sa)
+			if err != nil {
+				log.Error(err, "Failed to create service account for domain", "project", unionEnv.Project, "domain", unionEnv.Domain, "serviceAccount", sa.Name)
+				return err
 			}
 		}
-		return nil
-}
-
-func (r *UnionTeamServiceAccountsReconciler) updateServiceAccountForDomain(ctx context.Context, unionEnv *UnionEnv, serviceAccount datanavnov1.UnionServiceAccount) error {
-	log := logf.FromContext(ctx)
-	existing := &iam.IAMServiceAccount{}
-
-	err := r.Get(
-		ctx, 
-		types.NamespacedName{
-			Name: unionEnv.googleServiceAccountName(serviceAccount.Name), 
-			Namespace: unionEnv.Namespace(),
-		}, 
-		existing,
-	)
-	if err != nil {
-		return err
 	}
-
-	// err = r.Update(ctx, existing)
-	// if err != nil {
-	// 	log.Error(err, "Failed to update IAM service account for domain", "project", unionEnv.Project, "domain", unionEnv.Domain, "serviceAccount", serviceAccount.Name)
-	// 	return err
-	// }
-
-	sa := &v1.ServiceAccount{}
-	err = r.Get(
-		ctx, 
-		types.NamespacedName{
-			Name:      serviceAccount.Name,
-			Namespace: unionEnv.Namespace(),
-		}, 
-		sa,
-	)
-	if err != nil {
-		log.Error(err, "Failed to create service account")
-		return err
-	}
-
-	err = r.Update(ctx, sa)
-	if err != nil {
-		log.Error(err, "Failed to update service account")
-		return err
-	}
-
 	return nil
 }
 
@@ -156,6 +85,7 @@ func (r *UnionTeamServiceAccountsReconciler) createServiceAccountForDomain(ctx c
 			DisplayName: fmt.Sprintf("Union service account %s for domain %s in project %s", serviceAccount.Name, unionEnv.Domain, unionEnv.Project),
 		},
 	}
+
 	err := r.Create(ctx, iamServiceAccount)
 	if err != nil {
 		log.Error(err, "Failed to create IAM service account")
@@ -175,6 +105,7 @@ func (r *UnionTeamServiceAccountsReconciler) createServiceAccountForDomain(ctx c
 			},
 		},
 	}
+
 	err = r.Create(ctx, sa)
 	if err != nil {
 		log.Error(err, "Failed to create service account")
@@ -184,7 +115,12 @@ func (r *UnionTeamServiceAccountsReconciler) createServiceAccountForDomain(ctx c
 	return nil
 }
 
-func (r *UnionTeamServiceAccountsReconciler) cleanupRemovedServiceAccounts(ctx context.Context, unionEnv *UnionEnv, existingServiceAccounts []v1.ServiceAccount, log logr.Logger) error {
+func (r *UnionTeamServiceAccountsReconciler) cleanupRemovedServiceAccounts(
+	ctx context.Context,
+	unionEnv *UnionEnv,
+	existingServiceAccounts []v1.ServiceAccount,
+) error {
+	log := logf.FromContext(ctx)
 	for _, existing := range existingServiceAccounts {
 		if findByField(unionEnv.ServiceAccounts, existing.Name, func(sa datanavnov1.UnionServiceAccount) string { return sa.Name }) == nil {
 			if err := r.cleanupGoogleServiceAccount(ctx, unionEnv, existing.Name); err != nil {
@@ -200,30 +136,40 @@ func (r *UnionTeamServiceAccountsReconciler) cleanupRemovedServiceAccounts(ctx c
 	return nil
 }
 
-func (r *UnionTeamServiceAccountsReconciler) cleanupGoogleServiceAccount(ctx context.Context, unionEnv *UnionEnv, serviceAccountName string) error {
+func (r *UnionTeamServiceAccountsReconciler) cleanupGoogleServiceAccount(
+	ctx context.Context,
+	unionEnv *UnionEnv,
+	serviceAccountName string,
+) error {
 	log := logf.FromContext(ctx)
 
 	googleServiceAccount := &iam.IAMServiceAccount{}
 	err := r.Get(
-		ctx, 
+		ctx,
 		types.NamespacedName{
-			Name: unionEnv.googleServiceAccountName(serviceAccountName),
+			Name:      unionEnv.googleServiceAccountName(serviceAccountName),
 			Namespace: unionEnv.Namespace(),
 		},
 		googleServiceAccount,
 	)
 	if err != nil {
-			if !apierrors.IsNotFound(err) {
-				log.Error(err, "Failed to get IAM service account for deletion", "name", serviceAccountName)
-				return err
-			}
-		log.Info(fmt.Sprintf("Google service account for domain %s in project %s not found.", unionEnv.Project, unionEnv.Domain))
-	} 
+		if apierrors.IsNotFound(err) {
+			log.Info(fmt.Sprintf("Google service account for domain %s in project %s not found.", unionEnv.Project, unionEnv.Domain))
+			return nil
+		}
+		log.Error(err, "Failed to get IAM service account for deletion", "name", serviceAccountName)
+		return err
+	}
 
+	err = r.Delete(ctx, googleServiceAccount)
+	if err != nil {
+		log.Error(err, "Failed to delete IAM service account", serviceAccountName)
+		return err
+	}
 	return nil
 }
 
-func findByField[T datanavnov1.UnionServiceAccount | v1.ServiceAccount](serviceAccounts []T, name string, fieldFunc func(T) string) (*T) {
+func findByField[T datanavnov1.UnionServiceAccount | v1.ServiceAccount](serviceAccounts []T, name string, fieldFunc func(T) string) *T {
 	for _, sa := range serviceAccounts {
 		if fieldFunc(sa) == name {
 			return &sa
@@ -232,15 +178,3 @@ func findByField[T datanavnov1.UnionServiceAccount | v1.ServiceAccount](serviceA
 
 	return nil
 }
-
-// func (r *UnionTeamServiceAccountsReconciler) cleanupRemovedServiceAccounts(ctx context.Context, project, domain string, serviceAccounts []datanavnov1.UnionServiceAccount, existingServiceAccounts []v1.ServiceAccount, log logr.Logger) {
-// 	for _, existing := range existingServiceAccounts {
-// 		if _, found := findServiceAccount(existing.Name, serviceAccounts); !found {
-// 			err := r.Delete(ctx, &existing)
-// 			if err != nil {
-// 				log.Error(err, "Failed to delete service account", "name", existing.Name)
-// 			}
-// 		}
-
-// 	}
-// }
