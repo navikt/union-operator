@@ -18,9 +18,6 @@ package controller
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
-	"fmt"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -28,11 +25,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
-	iam "github.com/nais/liberator/pkg/apis/iam.cnrm.cloud.google.com/v1beta1"
-	v1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
-	"github.com/davecgh/go-spew/spew"
 	datanavnov1 "github.com/navikt/union-operator/api/v1"
 )
 
@@ -76,14 +68,16 @@ func (r *UnionTeamServiceAccountsReconciler) Reconcile(ctx context.Context, req 
 		return ctrl.Result{}, err
 	}
 
-	spew.Dump(utsa)
-
-	for _, sa := range utsa.Spec.ServiceAccounts {
-		err = r.createServiceAccountForDomain(ctx, utsa.Spec.Project, utsa.Spec.Domain, sa)
-		if err != nil {
-			log.Error(err, "Failed to create service account for domain", "project", utsa.Spec.Project, "domain", utsa.Spec.Domain, "serviceAccount", sa.Name)
-			return ctrl.Result{}, err
-		}
+	err = r.updateServiceAccountsForDomain(ctx, 
+		&UnionEnv{
+			Project: utsa.Spec.Project,
+			Domain: utsa.Spec.Domain,
+			ServiceAccounts: utsa.Spec.ServiceAccounts,
+		},
+	)
+	if err != nil {
+		log.Error(err, "Failed to update service accounts for domain", "project", utsa.Spec.Project, "domain", utsa.Spec.Domain)
+		return ctrl.Result{}, err
 	}
 
 	// iamPolicyMember := &iam.GCPIAMPolicyMember{
@@ -120,60 +114,6 @@ func (r *UnionTeamServiceAccountsReconciler) Reconcile(ctx context.Context, req 
 	//}
 
 	return ctrl.Result{}, nil
-}
-
-func (r *UnionTeamServiceAccountsReconciler) createServiceAccountForDomain(ctx context.Context, project, domain string, serviceAccount datanavnov1.UnionServiceAccount) error {
-	log := logf.FromContext(ctx)
-	googleServiceAccountName := googleServiceAccountName(project, domain, serviceAccount.Name)
-	iamServiceAccount := &iam.IAMServiceAccount{
-		TypeMeta: metav1.TypeMeta{
-			Kind:       "IAMServiceAccount",
-			APIVersion: "iam.cnrm.cloud.google.com/v1beta1",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      googleServiceAccountName,
-			Namespace: fmt.Sprintf("%s-%s", project, domain),
-			Annotations: map[string]string{
-				"cnrm.cloud.google.com/project-id": "nav-data-union-restricted-dev",
-			},
-		},
-		Spec: iam.IAMServiceAccountSpec{
-			DisplayName: fmt.Sprintf("Union service account %s for domain %s in project %s", serviceAccount.Name, domain, project),
-		},
-	}
-	err := r.Create(ctx, iamServiceAccount)
-	if err != nil {
-		log.Error(err, "Failed to create IAM service account")
-		return err
-	}
-
-	sa := &v1.ServiceAccount{
-		TypeMeta: metav1.TypeMeta{
-			Kind:       "ServiceAccount",
-			APIVersion: "v1",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      serviceAccount.Name,
-			Namespace: fmt.Sprintf("%s-%s", project, domain),
-			Annotations: map[string]string{
-				"iam.gke.io/gcp-service-account": googleServiceAccountName + "@nav-data-union-restricted-dev.iam.gserviceaccount.com",
-			},
-		},
-	}
-	err = r.Create(ctx, sa)
-	if err != nil {
-		log.Error(err, "Failed to create service account")
-		return err
-	}
-
-	return nil
-}
-
-func googleServiceAccountName(project, domain, serviceAccountName string) string {
-	name := fmt.Sprintf("%s-%s-%s", serviceAccountName, domain, project)
-	hash := sha256.Sum256([]byte(name))
-
-	return fmt.Sprintf("%s-%s", name[:23], hex.EncodeToString(hash[:])[:5])
 }
 
 // SetupWithManager sets up the controller with the Manager.
