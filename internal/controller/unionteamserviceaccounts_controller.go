@@ -43,6 +43,10 @@ type UnionTeamServiceAccountsReconciler struct {
 // +kubebuilder:rbac:groups=core,resources=serviceaccounts,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=iam.cnrm.cloud.google.com,resources=iamserviceaccounts,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=iam.cnrm.cloud.google.com,resources=iampolicymembers,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=networking.istio.io,resources=sidecars,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=networking.istio.io,resources=serviceentries,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=networking.istio.io,resources=virtualservices,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=security.istio.io,resources=authorizationpolicies,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile moves the current state of the cluster closer to the desired state
 // by managing ServiceAccounts, IAMServiceAccounts, and IAMPolicyMembers.
@@ -100,6 +104,11 @@ func (r *UnionTeamServiceAccountsReconciler) Reconcile(ctx context.Context, req 
 
 	// Normal reconciliation.
 	if err := r.updateServiceAccountsForDomain(ctx, unionEnv); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	err = r.ensureIstioServiceEntry(ctx, unionEnv)
+	if err != nil {
 		return ctrl.Result{}, err
 	}
 

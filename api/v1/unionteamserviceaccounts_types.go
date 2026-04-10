@@ -17,6 +17,8 @@ limitations under the License.
 package v1
 
 import (
+	"strings"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -50,10 +52,14 @@ type AllowedHost struct {
 	Host string `json:"host"`
 	// +required
 	Port int `json:"port"`
-	// +optional
-	Protocol *string `json:"protocol"`
+	// +required
+	Protocol string `json:"protocol"`
 	// +optional
 	Paths []string `json:"paths,omitempty"`
+}
+
+func (a AllowedHost) Name() string {
+	return strings.ReplaceAll(a.Host, ".", "-")
 }
 
 // UnionTeamServiceAccountsStatus defines the observed state of UnionTeamServiceAccounts.

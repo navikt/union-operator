@@ -107,7 +107,7 @@ type IAMPolicyMemberOpts struct {
 	External string
 
 	Member     string
-	ApiVersion string
+	APIVersion string
 }
 
 func (r *UnionTeamServiceAccountsReconciler) createIAMPolicyMembers(ctx context.Context, unionEnv *UnionEnv, sa datanavnov1.UnionServiceAccount) error {
@@ -117,7 +117,7 @@ func (r *UnionTeamServiceAccountsReconciler) createIAMPolicyMembers(ctx context.
 		Role:       "roles/iam.workloadIdentityUser",
 		Kind:       "IAMServiceAccount",
 		External:   fmt.Sprintf("projects/%s/serviceAccounts/%s@%s.iam.gserviceaccount.com", GCPProjectName, unionEnv.googleServiceAccountName(sa.Name), GCPProjectName),
-		ApiVersion: "iam.cnrm.cloud.google.com/v1beta1",
+		APIVersion: "iam.cnrm.cloud.google.com/v1beta1",
 		Member:     fmt.Sprintf("%s.svc.id.goog[%s/%s]", GCPProjectName, unionEnv.Namespace(), sa.Name),
 	}
 
@@ -126,7 +126,7 @@ func (r *UnionTeamServiceAccountsReconciler) createIAMPolicyMembers(ctx context.
 		Role:       "roles/storage.objectAdmin",
 		Kind:       "StorageBucket",
 		External:   DataBucket,
-		ApiVersion: "storage.cnrm.cloud.google.com/v1beta1",
+		APIVersion: "storage.cnrm.cloud.google.com/v1beta1",
 		Member:     fmt.Sprintf("%s@%s.iam.gserviceaccount.com", unionEnv.googleServiceAccountName(sa.Name), GCPProjectName),
 	}
 	fastRegistrationBucket := IAMPolicyMemberOpts{
@@ -134,7 +134,7 @@ func (r *UnionTeamServiceAccountsReconciler) createIAMPolicyMembers(ctx context.
 		Role:       "roles/storage.objectViewer",
 		Kind:       "StorageBucket",
 		External:   FastRegistrationBucket,
-		ApiVersion: "storage.cnrm.cloud.google.com/v1beta1",
+		APIVersion: "storage.cnrm.cloud.google.com/v1beta1",
 		Member:     fmt.Sprintf("%s@%s.iam.gserviceaccount.com", unionEnv.googleServiceAccountName(sa.Name), GCPProjectName),
 	}
 
@@ -182,7 +182,7 @@ func (r *UnionTeamServiceAccountsReconciler) createIAMPolicyMember(
 					Member: fmt.Sprintf("serviceAccount:%s", opts.Member),
 					Role:   opts.Role,
 					ResourceRef: iam.ResourceRef{
-						ApiVersion: opts.ApiVersion,
+						ApiVersion: opts.APIVersion,
 						Kind:       opts.Kind,
 						External:   &opts.External,
 					},

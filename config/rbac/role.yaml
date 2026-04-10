@@ -55,3 +55,29 @@ rules:
   - patch
   - update
   - watch
+- apiGroups:
+  - networking.istio.io
+  resources:
+  - serviceentries
+  - sidecars
+  - virtualservices
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - security.istio.io
+  resources:
+  - authorizationpolicies
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
