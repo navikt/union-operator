@@ -21,6 +21,7 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -43,15 +44,32 @@ var _ = Describe("UnionTeamServiceAccounts Controller", func() {
 		unionteamserviceaccounts := &datanavnov1.UnionTeamServiceAccounts{}
 
 		BeforeEach(func() {
+			By("creating the target namespace for reconciled resources")
+			targetNs := &corev1.Namespace{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-project-test-domain",
+				},
+			}
+			err := k8sClient.Get(ctx, types.NamespacedName{Name: targetNs.Name}, targetNs)
+			if err != nil && errors.IsNotFound(err) {
+				Expect(k8sClient.Create(ctx, targetNs)).To(Succeed())
+			}
+
 			By("creating the custom resource for the Kind UnionTeamServiceAccounts")
-			err := k8sClient.Get(ctx, typeNamespacedName, unionteamserviceaccounts)
+			err = k8sClient.Get(ctx, typeNamespacedName, unionteamserviceaccounts)
 			if err != nil && errors.IsNotFound(err) {
 				resource := &datanavnov1.UnionTeamServiceAccounts{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      resourceName,
 						Namespace: "default",
 					},
-					// TODO(user): Specify other spec details if needed.
+					Spec: datanavnov1.UnionTeamServiceAccountsSpec{
+						Project: "test-project",
+						Domain:  "test-domain",
+						ServiceAccounts: []datanavnov1.UnionServiceAccount{
+							{Name: "test-sa"},
+						},
+					},
 				}
 				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 			}

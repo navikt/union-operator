@@ -19,7 +19,9 @@ package controller
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -33,6 +35,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
+	iam "github.com/nais/liberator/pkg/apis/iam.cnrm.cloud.google.com/v1beta1"
 	datanavnov1 "github.com/navikt/union-operator/api/v1"
 	// +kubebuilder:scaffold:imports
 )
@@ -63,11 +66,19 @@ var _ = BeforeSuite(func() {
 	err = datanavnov1.AddToScheme(scheme.Scheme)
 	Expect(err).NotTo(HaveOccurred())
 
+	err = iam.AddToScheme(scheme.Scheme)
+	Expect(err).NotTo(HaveOccurred())
+
 	// +kubebuilder:scaffold:scheme
 
 	By("bootstrapping test environment")
+	liberatorCRDPath := resolveModuleCRDPath("github.com/nais/liberator")
+	crdPaths := []string{filepath.Join("..", "..", "config", "crd", "bases")}
+	if liberatorCRDPath != "" {
+		crdPaths = append(crdPaths, liberatorCRDPath)
+	}
 	testEnv = &envtest.Environment{
-		CRDDirectoryPaths:     []string{filepath.Join("..", "..", "config", "crd", "bases")},
+		CRDDirectoryPaths:     crdPaths,
 		ErrorIfCRDPathMissing: true,
 	}
 
@@ -115,4 +126,16 @@ func getFirstFoundEnvTestBinaryDir() string {
 		}
 	}
 	return ""
+}
+
+// resolveModuleCRDPath uses "go list" to find the on-disk directory of a Go module
+// and returns the path to its config/crd/bases directory.
+func resolveModuleCRDPath(module string) string {
+	cmd := exec.Command("go", "list", "-m", "-f", "{{.Dir}}", module)
+	out, err := cmd.Output()
+	if err != nil {
+		logf.Log.Error(err, "Failed to resolve module directory", "module", module)
+		return ""
+	}
+	return filepath.Join(strings.TrimSpace(string(out)), "config", "crd", "bases")
 }

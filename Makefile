@@ -8,6 +8,10 @@ else
 GOBIN=$(shell go env GOBIN)
 endif
 
+# GOTOOLCHAIN ensures we use the exact Go toolchain version specified in go.mod,
+# avoiding version mismatch warnings when the system Go differs from the project version.
+export GOTOOLCHAIN ?= go$(shell sed -n 's/^go //p' go.mod)
+
 # CONTAINER_TOOL defines the container tool to be used for building images.
 # Be aware that the target commands are only tested with Docker which is
 # scaffolded by default. However, you might want to replace it to use other
