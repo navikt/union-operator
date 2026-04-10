@@ -23,10 +23,13 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	datanavnov1 "github.com/navikt/union-operator/api/v1"
 )
+
+const unionFinalizer = "data.nav.no/finalizer"
 
 // UnionTeamServiceAccountsReconciler reconciles a UnionTeamServiceAccounts object
 type UnionTeamServiceAccountsReconciler struct {
@@ -41,15 +44,9 @@ type UnionTeamServiceAccountsReconciler struct {
 // +kubebuilder:rbac:groups=iam.cnrm.cloud.google.com,resources=iamserviceaccounts,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=iam.cnrm.cloud.google.com,resources=iampolicymembers,verbs=get;list;watch;create;update;patch;delete
 
-// Reconcile is part of the main kubernetes reconciliation loop which aims to
-// move the current state of the cluster closer to the desired state.
-// TODO(user): Modify the Reconcile function to compare the state specified by
-// the UnionTeamServiceAccounts object against the actual cluster state, and then
-// perform operations to make the cluster state reflect the state specified by
-// the user.
-//
-// For more details, check Reconcile and its Result here:
-// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.23.3/pkg/reconcile
+// Reconcile moves the current state of the cluster closer to the desired state
+// by managing ServiceAccounts, IAMServiceAccounts, and IAMPolicyMembers.
+// It uses a finalizer to ensure cross-namespace resources are cleaned up on deletion.
 
 func (r *UnionTeamServiceAccountsReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
@@ -58,60 +55,53 @@ func (r *UnionTeamServiceAccountsReconciler) Reconcile(ctx context.Context, req 
 	err := r.Get(ctx, req.NamespacedName, utsa)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
-			// If the custom resource is not found then it usually means that it was deleted or not created
-			// In this way, we will stop the reconciliation
-			log.Info("UnionTeamServiceAccounts resource not found. Ignoring since object must be deleted")
+			log.Info("UnionTeamServiceAccounts resource not found, ignoring since object must be deleted")
 			return ctrl.Result{}, nil
 		}
-		// Error reading the obbject - requeue the request.
 		log.Error(err, "Failed to get UnionTeamServiceAccounts")
 		return ctrl.Result{}, err
 	}
 
-	err = r.updateServiceAccountsForDomain(ctx, 
-		&UnionEnv{
-			Project: utsa.Spec.Project,
-			Domain: utsa.Spec.Domain,
-			ServiceAccounts: utsa.Spec.ServiceAccounts,
-		},
-	)
-	if err != nil {
-		log.Error(err, "Failed to update service accounts for domain", "project", utsa.Spec.Project, "domain", utsa.Spec.Domain)
-		return ctrl.Result{}, err
+	unionEnv := &UnionEnv{
+		Project:         utsa.Spec.Project,
+		Domain:          utsa.Spec.Domain,
+		ServiceAccounts: utsa.Spec.ServiceAccounts,
 	}
 
-	// iamPolicyMember := &iam.GCPIAMPolicyMember{
-	// 	TypeMeta: metav1.TypeMeta{
-	// 		Kind:       "IAMPolicyMember",
-	// 		APIVersion: "iam.cnrm.cloud.google.com/v1beta1",
-	// 	},
-	// 	ObjectMeta: metav1.ObjectMeta{
-	// 		Name:      utsa.Spec.Name,
-	// 		Namespace: utsa.Namespace,
-	// 	},
-	// 	Spec: iam.GCPIAMPolicyMemberSpec{
-	// 		Member: "serviceAccount:" + utsa.Spec.Name + "@" + utsa.Namespace + ".iam.gserviceaccount.com",
-	// 		Role:   "roles/viewer",
-	// 	},
-	// }
+	// Handle deletion: clean up all cross-namespace resources before allowing CR removal.
+	if !utsa.DeletionTimestamp.IsZero() {
+		if controllerutil.ContainsFinalizer(utsa, unionFinalizer) {
+			log.Info("Running finalizer cleanup", "project", utsa.Spec.Project, "domain", utsa.Spec.Domain)
 
-	//config, err := rest.InClusterConfig()
-	//if err != nil {
-	//	log.Error(err, "Failed to get cluster config")
-	//	return ctrl.Result{}, err
-	//}
+			if err := r.cleanupAllResources(ctx, unionEnv); err != nil {
+				log.Error(err, "Failed to run finalizer cleanup")
+				return ctrl.Result{}, err
+			}
 
-	//c, err := client.New(config, client.Options{})
-	//if err != nil {
-	//	log.Error(err, "Failed to create k8s client")
-	//	return ctrl.Result{}, err
-	//}
+			controllerutil.RemoveFinalizer(utsa, unionFinalizer)
+			if err := r.Update(ctx, utsa); err != nil {
+				log.Error(err, "Failed to remove finalizer")
+				return ctrl.Result{}, err
+			}
+			log.Info("Finalizer cleanup completed")
+		}
+		return ctrl.Result{}, nil
+	}
 
-	//err = c.Create(ctx, sa)
-	//if err != nil {
-	//	log.Error(err, "Failed to create service account")
-	//	return ctrl.Result{}, err
-	//}
+	// Add finalizer if not present.
+	if !controllerutil.ContainsFinalizer(utsa, unionFinalizer) {
+		log.Info("Adding finalizer")
+		controllerutil.AddFinalizer(utsa, unionFinalizer)
+		if err := r.Update(ctx, utsa); err != nil {
+			log.Error(err, "Failed to add finalizer")
+			return ctrl.Result{}, err
+		}
+	}
+
+	// Normal reconciliation.
+	if err := r.updateServiceAccountsForDomain(ctx, unionEnv); err != nil {
+		return ctrl.Result{}, err
+	}
 
 	return ctrl.Result{}, nil
 }

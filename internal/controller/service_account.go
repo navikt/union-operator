@@ -2,11 +2,13 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	datanavnov1 "github.com/navikt/union-operator/api/v1"
 	v1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	iam "github.com/nais/liberator/pkg/apis/iam.cnrm.cloud.google.com/v1beta1"
@@ -32,21 +34,54 @@ func (r *UnionTeamServiceAccountsReconciler) updateServiceAccountsForDomain(ctx 
 		UnionDomainLabel:  unionEnv.Domain,
 	})
 	if err != nil {
-		log.Error(err, "Failed to list service accounts for project and domain", "project", unionEnv.Project, "domain", unionEnv.Domain)
+		log.Error(err, "Failed to list ServiceAccounts", "project", unionEnv.Project, "domain", unionEnv.Domain)
 		return err
 	}
 
 	if err := r.createOrUpdateServiceAccounts(ctx, unionEnv, existing.Items); err != nil {
-		log.Error(err, "Failed to create or update service accounts for project and domain", "project", unionEnv.Project, "domain", unionEnv.Domain)
 		return err
 	}
 
 	if err := r.cleanupRemovedServiceAccounts(ctx, unionEnv, existing.Items); err != nil {
-		log.Error(err, "Failed to cleanup removed service accounts for project and domain", "project", unionEnv.Project, "domain", unionEnv.Domain)
 		return err
 	}
 
 	return nil
+}
+
+// cleanupAllResources deletes all ServiceAccounts, IAMServiceAccounts, and
+// IAMPolicyMembers managed by this controller for the given UnionEnv.
+// This is called by the finalizer when the CR is being deleted.
+func (r *UnionTeamServiceAccountsReconciler) cleanupAllResources(ctx context.Context, unionEnv *UnionEnv) error {
+	log := logf.FromContext(ctx)
+	existing := &v1.ServiceAccountList{}
+
+	err := r.List(ctx, existing, client.MatchingLabels{
+		UnionProjectLabel: unionEnv.Project,
+		UnionDomainLabel:  unionEnv.Domain,
+	})
+	if err != nil {
+		log.Error(err, "Failed to list service accounts during cleanup", "project", unionEnv.Project, "domain", unionEnv.Domain)
+		return err
+	}
+
+	var errs []error
+	for _, sa := range existing.Items {
+		if err := r.cleanupServiceAccount(ctx, unionEnv, sa.Name); err != nil {
+			log.Error(err, "Failed to cleanup service account resources during finalizer", "name", sa.Name)
+			errs = append(errs, err)
+			continue
+		}
+
+		if err := r.Delete(ctx, &sa); err != nil {
+			if !apierrors.IsNotFound(err) {
+				log.Error(err, "Failed to delete Kubernetes ServiceAccount during finalizer", "name", sa.Name)
+				errs = append(errs, err)
+			}
+		}
+	}
+
+	return errors.Join(errs...)
 }
 
 func (r *UnionTeamServiceAccountsReconciler) createOrUpdateServiceAccounts(
@@ -54,19 +89,11 @@ func (r *UnionTeamServiceAccountsReconciler) createOrUpdateServiceAccounts(
 	unionEnv *UnionEnv,
 	existing []v1.ServiceAccount,
 ) error {
-	log := logf.FromContext(ctx)
 	for _, sa := range unionEnv.ServiceAccounts {
-		existing := findByField(existing, sa.Name, func(sa v1.ServiceAccount) string { return sa.Name })
-		if existing == nil {
-			err := r.createServiceAccountForDomain(ctx, unionEnv, sa)
-			if err != nil {
-				log.Error(err, "Failed to create service account for domain", "project", unionEnv.Project, "domain", unionEnv.Domain, "serviceAccount", sa.Name)
-				return err
-			}
+		if err := r.createServiceAccountForDomain(ctx, unionEnv, sa); err != nil {
+			return err
 		}
-		err := r.createIAMPolicyMembers(ctx, unionEnv, sa)
-		if err != nil {
-			log.Error(err, "Failed to create iam policy members for project", "project", unionEnv.Project, "domain", unionEnv.Domain, "serviceAccount", sa.Name)
+		if err := r.createIAMPolicyMembers(ctx, unionEnv, sa); err != nil {
 			return err
 		}
 	}
@@ -84,7 +111,6 @@ type IAMPolicyMemberOpts struct {
 }
 
 func (r *UnionTeamServiceAccountsReconciler) createIAMPolicyMembers(ctx context.Context, unionEnv *UnionEnv, sa datanavnov1.UnionServiceAccount) error {
-	log := logf.FromContext(ctx)
 
 	workloadIdentity := IAMPolicyMemberOpts{
 		Name:       fmt.Sprintf("%s-workload-identity-user", sa.Name),
@@ -119,14 +145,7 @@ func (r *UnionTeamServiceAccountsReconciler) createIAMPolicyMembers(ctx context.
 	}
 
 	for _, member := range policyMembers {
-		err := r.createIAMPolicyMember(
-			ctx,
-			unionEnv,
-			sa,
-			member,
-		)
-		if err != nil {
-			log.Error(err, "Failed to create IAM policy member", "name", member.Name)
+		if err := r.createIAMPolicyMember(ctx, unionEnv, sa, member); err != nil {
 			return err
 		}
 	}
@@ -188,46 +207,75 @@ func (r *UnionTeamServiceAccountsReconciler) createServiceAccountForDomain(ctx c
 	googleServiceAccountName := unionEnv.googleServiceAccountName(serviceAccount.Name)
 
 	iamServiceAccount := &iam.IAMServiceAccount{
-		TypeMeta: metav1.TypeMeta{
-			Kind:       "IAMServiceAccount",
-			APIVersion: "iam.cnrm.cloud.google.com/v1beta1",
-		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      googleServiceAccountName,
 			Namespace: unionEnv.Namespace(),
-			Annotations: map[string]string{
-				"cnrm.cloud.google.com/project-id": "nav-data-union-restricted-dev",
-			},
-		},
-		Spec: iam.IAMServiceAccountSpec{
-			DisplayName: fmt.Sprintf("Union service account %s for domain %s in project %s", serviceAccount.Name, unionEnv.Domain, unionEnv.Project),
 		},
 	}
 
-	err := r.Create(ctx, iamServiceAccount)
+	err := r.Get(ctx, types.NamespacedName{Name: googleServiceAccountName, Namespace: unionEnv.Namespace()}, iamServiceAccount)
 	if err != nil {
-		log.Error(err, "Failed to create IAM service account")
-		return err
+		if !apierrors.IsNotFound(err) {
+			log.Error(err, "Failed to get IAMServiceAccount", "name", googleServiceAccountName)
+			return err
+		}
+		// Create new IAMServiceAccount.
+		iamServiceAccount.Labels = map[string]string{
+			UnionProjectLabel: unionEnv.Project,
+			UnionDomainLabel:  unionEnv.Domain,
+		}
+		iamServiceAccount.Annotations = map[string]string{
+			"cnrm.cloud.google.com/project-id": GCPProjectName,
+		}
+		iamServiceAccount.Spec.DisplayName = fmt.Sprintf("Union service account %s for domain %s in project %s", serviceAccount.Name, unionEnv.Domain, unionEnv.Project)
+		if err := r.Create(ctx, iamServiceAccount); err != nil {
+			log.Error(err, "Failed to create IAMServiceAccount", "name", googleServiceAccountName)
+			return err
+		}
+		log.Info("Created IAMServiceAccount", "name", googleServiceAccountName)
+	} else {
+		// Patch labels/annotations on existing IAMServiceAccount (avoids touching immutable spec fields).
+		patch := client.MergeFrom(iamServiceAccount.DeepCopy())
+		if iamServiceAccount.Labels == nil {
+			iamServiceAccount.Labels = make(map[string]string)
+		}
+		iamServiceAccount.Labels[UnionProjectLabel] = unionEnv.Project
+		iamServiceAccount.Labels[UnionDomainLabel] = unionEnv.Domain
+		if iamServiceAccount.Annotations == nil {
+			iamServiceAccount.Annotations = make(map[string]string)
+		}
+		iamServiceAccount.Annotations["cnrm.cloud.google.com/project-id"] = GCPProjectName
+		if err := r.Patch(ctx, iamServiceAccount, patch); err != nil {
+			log.Error(err, "Failed to patch IAMServiceAccount", "name", googleServiceAccountName)
+			return err
+		}
 	}
 
 	sa := &v1.ServiceAccount{
-		TypeMeta: metav1.TypeMeta{
-			Kind:       "ServiceAccount",
-			APIVersion: "v1",
-		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      serviceAccount.Name,
 			Namespace: unionEnv.Namespace(),
-			Annotations: map[string]string{
-				"iam.gke.io/gcp-service-account": googleServiceAccountName + "@nav-data-union-restricted-dev.iam.gserviceaccount.com",
-			},
 		},
 	}
 
-	err = r.Create(ctx, sa)
+	result, err := controllerutil.CreateOrUpdate(ctx, r.Client, sa, func() error {
+		if sa.Labels == nil {
+			sa.Labels = make(map[string]string)
+		}
+		sa.Labels[UnionProjectLabel] = unionEnv.Project
+		sa.Labels[UnionDomainLabel] = unionEnv.Domain
+		if sa.Annotations == nil {
+			sa.Annotations = make(map[string]string)
+		}
+		sa.Annotations["iam.gke.io/gcp-service-account"] = googleServiceAccountName + "@" + GCPProjectName + ".iam.gserviceaccount.com"
+		return nil
+	})
 	if err != nil {
-		log.Error(err, "Failed to create service account")
+		log.Error(err, "Failed to create or update ServiceAccount", "name", serviceAccount.Name)
 		return err
+	}
+	if result != controllerutil.OperationResultNone {
+		log.Info("Reconciled ServiceAccount", "name", serviceAccount.Name, "result", result)
 	}
 
 	return nil
@@ -239,27 +287,40 @@ func (r *UnionTeamServiceAccountsReconciler) cleanupRemovedServiceAccounts(
 	existingServiceAccounts []v1.ServiceAccount,
 ) error {
 	log := logf.FromContext(ctx)
+	var errs []error
 	for _, existing := range existingServiceAccounts {
 		if findByField(unionEnv.ServiceAccounts, existing.Name, func(sa datanavnov1.UnionServiceAccount) string { return sa.Name }) == nil {
-			if err := r.cleanupGoogleServiceAccount(ctx, unionEnv, existing.Name); err != nil {
-				log.Error(err, "Failed to cleanup Google service account", "name", existing.Name)
+			if err := r.cleanupServiceAccount(ctx, unionEnv, existing.Name); err != nil {
+				log.Error(err, "Failed to cleanup service account resources", "name", existing.Name)
+				errs = append(errs, err)
+				continue
 			}
 
-			err := r.Delete(ctx, &existing)
-			if err != nil {
-				log.Error(err, "Failed to delete k8s service account", "name", existing.Name)
+			if err := r.Delete(ctx, &existing); err != nil {
+				if !apierrors.IsNotFound(err) {
+					log.Error(err, "Failed to delete Kubernetes ServiceAccount", "name", existing.Name)
+					errs = append(errs, err)
+				}
 			}
 		}
 	}
-	return nil
+	return errors.Join(errs...)
 }
 
-func (r *UnionTeamServiceAccountsReconciler) cleanupGoogleServiceAccount(
+// cleanupServiceAccount deletes the IAMServiceAccount and all associated
+// IAMPolicyMembers for a given service account name.
+func (r *UnionTeamServiceAccountsReconciler) cleanupServiceAccount(
 	ctx context.Context,
 	unionEnv *UnionEnv,
 	serviceAccountName string,
 ) error {
 	log := logf.FromContext(ctx)
+	var errs []error
+
+	if err := r.cleanupIAMPolicyMembers(ctx, unionEnv, serviceAccountName); err != nil {
+		log.Error(err, "Failed to cleanup IAMPolicyMembers", "name", serviceAccountName)
+		errs = append(errs, err)
+	}
 
 	googleServiceAccount := &iam.IAMServiceAccount{}
 	err := r.Get(
@@ -272,19 +333,62 @@ func (r *UnionTeamServiceAccountsReconciler) cleanupGoogleServiceAccount(
 	)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
-			log.Info(fmt.Sprintf("Google service account for domain %s in project %s not found.", unionEnv.Project, unionEnv.Domain))
-			return nil
+			log.Info("IAMServiceAccount not found, skipping deletion", "name", serviceAccountName, "project", unionEnv.Project, "domain", unionEnv.Domain)
+			return errors.Join(errs...)
 		}
-		log.Error(err, "Failed to get IAM service account for deletion", "name", serviceAccountName)
-		return err
+		log.Error(err, "Failed to get IAMServiceAccount for deletion", "name", serviceAccountName)
+		errs = append(errs, err)
+		return errors.Join(errs...)
 	}
 
-	err = r.Delete(ctx, googleServiceAccount)
-	if err != nil {
-		log.Error(err, "Failed to delete IAM service account", "name", serviceAccountName)
-		return err
+	if err := r.Delete(ctx, googleServiceAccount); err != nil {
+		log.Error(err, "Failed to delete IAMServiceAccount", "name", serviceAccountName)
+		errs = append(errs, err)
 	}
-	return nil
+
+	return errors.Join(errs...)
+}
+
+// cleanupIAMPolicyMembers deletes the three IAMPolicyMember resources
+// (workload identity, data bucket, fast registration bucket) for a service account.
+func (r *UnionTeamServiceAccountsReconciler) cleanupIAMPolicyMembers(
+	ctx context.Context,
+	unionEnv *UnionEnv,
+	serviceAccountName string,
+) error {
+	log := logf.FromContext(ctx)
+
+	policyMemberNames := []string{
+		fmt.Sprintf("%s-workload-identity-user", serviceAccountName),
+		fmt.Sprintf("%s-union-data-bucket-object-admin", serviceAccountName),
+		fmt.Sprintf("%s-union-fast-registration-bucket-viewer", serviceAccountName),
+	}
+
+	var errs []error
+	for _, name := range policyMemberNames {
+		existing := &iam.IAMPolicyMember{}
+		err := r.Get(ctx, types.NamespacedName{
+			Name:      name,
+			Namespace: unionEnv.Namespace(),
+		}, existing)
+		if err != nil {
+			if apierrors.IsNotFound(err) {
+				continue
+			}
+			log.Error(err, "Failed to get IAMPolicyMember for deletion", "name", name)
+			errs = append(errs, err)
+			continue
+		}
+
+		if err := r.Delete(ctx, existing); err != nil {
+			if !apierrors.IsNotFound(err) {
+				log.Error(err, "Failed to delete IAMPolicyMember", "name", name)
+				errs = append(errs, err)
+			}
+		}
+	}
+
+	return errors.Join(errs...)
 }
 
 func findByField[T datanavnov1.UnionServiceAccount | v1.ServiceAccount](serviceAccounts []T, name string, fieldFunc func(T) string) *T {
