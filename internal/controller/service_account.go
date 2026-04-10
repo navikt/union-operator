@@ -90,7 +90,7 @@ func (r *UnionTeamServiceAccountsReconciler) createOrUpdateServiceAccounts(
 	existing []v1.ServiceAccount,
 ) error {
 	for _, sa := range unionEnv.ServiceAccounts {
-		if err := r.createServiceAccountForDomain(ctx, unionEnv, sa); err != nil {
+		if err := r.reconcileServiceAccountForDomain(ctx, unionEnv, sa); err != nil {
 			return err
 		}
 		if err := r.createIAMPolicyMembers(ctx, unionEnv, sa); err != nil {
@@ -202,7 +202,14 @@ func (r *UnionTeamServiceAccountsReconciler) createIAMPolicyMember(
 	return nil
 }
 
-func (r *UnionTeamServiceAccountsReconciler) createServiceAccountForDomain(ctx context.Context, unionEnv *UnionEnv, serviceAccount datanavnov1.UnionServiceAccount) error {
+func (r *UnionTeamServiceAccountsReconciler) reconcileServiceAccountForDomain(ctx context.Context, unionEnv *UnionEnv, serviceAccount datanavnov1.UnionServiceAccount) error {
+	if err := r.reconcileIAMServiceAccount(ctx, unionEnv, serviceAccount); err != nil {
+		return err
+	}
+	return r.reconcileServiceAccount(ctx, unionEnv, serviceAccount)
+}
+
+func (r *UnionTeamServiceAccountsReconciler) reconcileIAMServiceAccount(ctx context.Context, unionEnv *UnionEnv, serviceAccount datanavnov1.UnionServiceAccount) error {
 	log := logf.FromContext(ctx)
 	googleServiceAccountName := unionEnv.googleServiceAccountName(serviceAccount.Name)
 
@@ -220,36 +227,33 @@ func (r *UnionTeamServiceAccountsReconciler) createServiceAccountForDomain(ctx c
 			return err
 		}
 		// Create new IAMServiceAccount.
-		iamServiceAccount.Labels = map[string]string{
-			UnionProjectLabel: unionEnv.Project,
-			UnionDomainLabel:  unionEnv.Domain,
-		}
-		iamServiceAccount.Annotations = map[string]string{
+		setUnionMetadata(iamServiceAccount, unionEnv, map[string]string{
 			"cnrm.cloud.google.com/project-id": GCPProjectName,
-		}
+		})
 		iamServiceAccount.Spec.DisplayName = fmt.Sprintf("Union service account %s for domain %s in project %s", serviceAccount.Name, unionEnv.Domain, unionEnv.Project)
 		if err := r.Create(ctx, iamServiceAccount); err != nil {
 			log.Error(err, "Failed to create IAMServiceAccount", "name", googleServiceAccountName)
 			return err
 		}
 		log.Info("Created IAMServiceAccount", "name", googleServiceAccountName)
-	} else {
-		// Patch labels/annotations on existing IAMServiceAccount (avoids touching immutable spec fields).
-		patch := client.MergeFrom(iamServiceAccount.DeepCopy())
-		if iamServiceAccount.Labels == nil {
-			iamServiceAccount.Labels = make(map[string]string)
-		}
-		iamServiceAccount.Labels[UnionProjectLabel] = unionEnv.Project
-		iamServiceAccount.Labels[UnionDomainLabel] = unionEnv.Domain
-		if iamServiceAccount.Annotations == nil {
-			iamServiceAccount.Annotations = make(map[string]string)
-		}
-		iamServiceAccount.Annotations["cnrm.cloud.google.com/project-id"] = GCPProjectName
-		if err := r.Patch(ctx, iamServiceAccount, patch); err != nil {
-			log.Error(err, "Failed to patch IAMServiceAccount", "name", googleServiceAccountName)
-			return err
-		}
+		return nil
 	}
+
+	// Patch labels/annotations on existing IAMServiceAccount (avoids touching immutable spec fields).
+	patch := client.MergeFrom(iamServiceAccount.DeepCopy())
+	setUnionMetadata(iamServiceAccount, unionEnv, map[string]string{
+		"cnrm.cloud.google.com/project-id": GCPProjectName,
+	})
+	if err := r.Patch(ctx, iamServiceAccount, patch); err != nil {
+		log.Error(err, "Failed to patch IAMServiceAccount", "name", googleServiceAccountName)
+		return err
+	}
+	return nil
+}
+
+func (r *UnionTeamServiceAccountsReconciler) reconcileServiceAccount(ctx context.Context, unionEnv *UnionEnv, serviceAccount datanavnov1.UnionServiceAccount) error {
+	log := logf.FromContext(ctx)
+	googleServiceAccountName := unionEnv.googleServiceAccountName(serviceAccount.Name)
 
 	sa := &v1.ServiceAccount{
 		ObjectMeta: metav1.ObjectMeta{
@@ -259,15 +263,9 @@ func (r *UnionTeamServiceAccountsReconciler) createServiceAccountForDomain(ctx c
 	}
 
 	result, err := controllerutil.CreateOrUpdate(ctx, r.Client, sa, func() error {
-		if sa.Labels == nil {
-			sa.Labels = make(map[string]string)
-		}
-		sa.Labels[UnionProjectLabel] = unionEnv.Project
-		sa.Labels[UnionDomainLabel] = unionEnv.Domain
-		if sa.Annotations == nil {
-			sa.Annotations = make(map[string]string)
-		}
-		sa.Annotations["iam.gke.io/gcp-service-account"] = googleServiceAccountName + "@" + GCPProjectName + ".iam.gserviceaccount.com"
+		setUnionMetadata(sa, unionEnv, map[string]string{
+			"iam.gke.io/gcp-service-account": googleServiceAccountName + "@" + GCPProjectName + ".iam.gserviceaccount.com",
+		})
 		return nil
 	})
 	if err != nil {
@@ -277,7 +275,6 @@ func (r *UnionTeamServiceAccountsReconciler) createServiceAccountForDomain(ctx c
 	if result != controllerutil.OperationResultNone {
 		log.Info("Reconciled ServiceAccount", "name", serviceAccount.Name, "result", result)
 	}
-
 	return nil
 }
 
@@ -399,4 +396,25 @@ func findByField[T datanavnov1.UnionServiceAccount | v1.ServiceAccount](serviceA
 	}
 
 	return nil
+}
+
+// setUnionMetadata ensures the standard union labels and the provided annotations
+// are set on the given object. Existing labels and annotations are preserved.
+func setUnionMetadata(obj metav1.Object, unionEnv *UnionEnv, annotations map[string]string) {
+	labels := obj.GetLabels()
+	if labels == nil {
+		labels = make(map[string]string)
+	}
+	labels[UnionProjectLabel] = unionEnv.Project
+	labels[UnionDomainLabel] = unionEnv.Domain
+	obj.SetLabels(labels)
+
+	existing := obj.GetAnnotations()
+	if existing == nil {
+		existing = make(map[string]string)
+	}
+	for k, v := range annotations {
+		existing[k] = v
+	}
+	obj.SetAnnotations(existing)
 }
