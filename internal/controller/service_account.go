@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 
 	datanavnov1 "github.com/navikt/union-operator/api/v1"
 	v1 "k8s.io/api/core/v1"
@@ -38,7 +39,7 @@ func (r *UnionTeamServiceAccountsReconciler) updateServiceAccountsForDomain(ctx 
 		return err
 	}
 
-	if err := r.createOrUpdateServiceAccounts(ctx, unionEnv, existing.Items); err != nil {
+	if err := r.createOrUpdateServiceAccounts(ctx, unionEnv); err != nil {
 		return err
 	}
 
@@ -87,7 +88,6 @@ func (r *UnionTeamServiceAccountsReconciler) cleanupAllResources(ctx context.Con
 func (r *UnionTeamServiceAccountsReconciler) createOrUpdateServiceAccounts(
 	ctx context.Context,
 	unionEnv *UnionEnv,
-	existing []v1.ServiceAccount,
 ) error {
 	for _, sa := range unionEnv.ServiceAccounts {
 		if err := r.reconcileServiceAccountForDomain(ctx, unionEnv, sa); err != nil {
@@ -145,7 +145,7 @@ func (r *UnionTeamServiceAccountsReconciler) createIAMPolicyMembers(ctx context.
 	}
 
 	for _, member := range policyMembers {
-		if err := r.createIAMPolicyMember(ctx, unionEnv, sa, member); err != nil {
+		if err := r.createIAMPolicyMember(ctx, unionEnv, member); err != nil {
 			return err
 		}
 	}
@@ -156,7 +156,6 @@ func (r *UnionTeamServiceAccountsReconciler) createIAMPolicyMembers(ctx context.
 func (r *UnionTeamServiceAccountsReconciler) createIAMPolicyMember(
 	ctx context.Context,
 	unionEnv *UnionEnv,
-	sa datanavnov1.UnionServiceAccount,
 	opts IAMPolicyMemberOpts,
 ) error {
 	log := logf.FromContext(ctx)
@@ -413,8 +412,6 @@ func setUnionMetadata(obj metav1.Object, unionEnv *UnionEnv, annotations map[str
 	if existing == nil {
 		existing = make(map[string]string)
 	}
-	for k, v := range annotations {
-		existing[k] = v
-	}
+	maps.Copy(existing, annotations)
 	obj.SetAnnotations(existing)
 }

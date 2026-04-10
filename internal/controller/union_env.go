@@ -22,9 +22,6 @@ func (u *UnionEnv) googleServiceAccountName(serviceAccountName string) string {
 	name := fmt.Sprintf("%s-%s-%s", serviceAccountName, u.Domain, u.Project)
 	hash := sha256.Sum256([]byte(name))
 
-	prefixLength := 23
-	if len(name) < prefixLength {
-		prefixLength = len(name)
-	}
+	prefixLength := min(23, len(name))
 	return fmt.Sprintf("%s-%s", name[:prefixLength], hex.EncodeToString(hash[:])[:5])
 }
