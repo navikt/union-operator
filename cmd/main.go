@@ -39,6 +39,7 @@ import (
 	"github.com/navikt/union-operator/internal/controller"
 
 	iam "github.com/nais/liberator/pkg/apis/iam.cnrm.cloud.google.com/v1beta1"
+	istio "istio.io/client-go/pkg/apis/networking/v1beta1"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -52,6 +53,7 @@ func init() {
 
 	utilruntime.Must(datanavnov1.AddToScheme(scheme))
 	utilruntime.Must(iam.AddToScheme(scheme))
+	utilruntime.Must(istio.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
 }
 
