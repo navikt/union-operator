@@ -2,7 +2,9 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"maps"
 	"slices"
 
 	datanavnov1 "github.com/navikt/union-operator/api/v1"
@@ -17,10 +19,109 @@ import (
 
 const (
 	istioEgressNamespace = "istio-egress"
-	gatewayHost = "istio-egressgateway.istio-egress.svc.cluster.local"
-	gatewayName = "istio-egressgateway"
-	meshGatewayName = "mesh"
+	gatewayHost          = "istio-egressgateway.istio-egress.svc.cluster.local"
+	gatewayName          = "istio-egressgateway"
+	meshGatewayName      = "mesh"
 )
+
+func (r *UnionTeamServiceAccountsReconciler) cleanupUnusedHosts(ctx context.Context) error {
+	var utsas datanavnov1.UnionTeamServiceAccountsList
+	err := r.List(ctx, &utsas)
+	if err != nil {
+		return err
+	}
+
+	hostsInUse := make(map[string]bool)
+	for _, utsa := range utsas.Items {
+		for _, sa := range utsa.Spec.ServiceAccounts {
+			for _, host := range sa.Allowlist {
+				hostsInUse[host.Host] = true
+			}
+		}
+	}
+
+	gateway := &istio.Gateway{}
+	err = r.Get(ctx, types.NamespacedName{Name: gatewayName, Namespace: istioEgressNamespace}, gateway)
+	if err != nil {
+		return err
+	}
+
+	for _, server := range gateway.Spec.Servers {
+		if server.Port.Protocol == "HTTPS" {
+			for _, host := range server.Hosts {
+				_, ok := hostsInUse[host]
+				if !ok {
+					err := r.removeHost(ctx, host)
+					if err != nil {
+						return err
+					}
+				}
+			}
+			hosts := slices.Collect(maps.Keys(hostsInUse))
+			slices.Sort(hosts)
+			server.Hosts = hosts
+
+			if err := r.Update(ctx, gateway); err != nil {
+				return err
+			}
+
+		}
+	}
+
+	return nil
+
+}
+
+func (r *UnionTeamServiceAccountsReconciler) removeHost(ctx context.Context, host string) error {
+	var errs []error
+	err := r.removeServiceEntry(ctx, host)
+	if err != nil {
+		errs = append(errs, err)
+	}
+
+	err = r.removeVirtualService(ctx, host)
+	if err != nil {
+		errs = append(errs, err)
+	}
+
+	return errors.Join(errs...)
+}
+
+func (r *UnionTeamServiceAccountsReconciler) removeServiceEntry(ctx context.Context, host string) error {
+	seList := &istio.ServiceEntryList{}
+	err := r.List(ctx, seList, client.InNamespace(istioEgressNamespace), client.MatchingLabels{"host": host})
+	if err != nil {
+		return err
+	}
+
+	var errs []error
+	for _, se := range seList.Items {
+		err = r.Delete(ctx, se)
+		if err != nil {
+			errs = append(errs, err)
+		}
+	}
+
+	return errors.Join(errs...)
+}
+
+func (r *UnionTeamServiceAccountsReconciler) removeVirtualService(ctx context.Context, host string) error {
+	vsList := &istio.VirtualServiceList{}
+	err := r.List(ctx, vsList, client.InNamespace(istioEgressNamespace), client.MatchingLabels{"host": host})
+	if err != nil {
+		return err
+	}
+
+	var errs []error
+	for _, se := range vsList.Items {
+		err = r.Delete(ctx, se)
+		if err != nil {
+			errs = append(errs, err)
+		}
+	}
+
+	return errors.Join(errs...)
+}
 
 func (r *UnionTeamServiceAccountsReconciler) ensureIstioServiceEntry(ctx context.Context, unionEnv *UnionEnv) error {
 
@@ -43,7 +144,6 @@ func (r *UnionTeamServiceAccountsReconciler) ensureIstioServiceEntry(ctx context
 			if exists {
 				continue
 			}
-
 
 			err = r.createIstioServiceEntry(ctx, host)
 			if err != nil {
@@ -96,21 +196,21 @@ func createHTTPSServiceEntry(host datanavnov1.AllowedHost) *istio.ServiceEntry {
 			},
 		},
 		Spec: istiov1beta1.ServiceEntry{
-			Hosts:      []string{host.Host},
-			Ports:      []*istiov1beta1.ServicePort{
+			Hosts: []string{host.Host},
+			Ports: []*istiov1beta1.ServicePort{
 				{
-					Number: 80,
-					Name: "http",
+					Number:   80,
+					Name:     "http",
 					Protocol: "HTTP",
 				},
 				{
-					Number: uint32(host.Port), 
-					Name: host.Protocol, 
+					Number:   uint32(host.Port),
+					Name:     host.Protocol,
 					Protocol: host.Protocol,
 				},
 			},
-			Resolution:  istiov1beta1.ServiceEntry_DNS,
-			Location:    istiov1beta1.ServiceEntry_MESH_EXTERNAL,
+			Resolution: istiov1beta1.ServiceEntry_DNS,
+			Location:   istiov1beta1.ServiceEntry_MESH_EXTERNAL,
 			ExportTo:   []string{"*"},
 		},
 	}
@@ -169,7 +269,7 @@ func (r *UnionTeamServiceAccountsReconciler) createVirtualServiceForHost(host *d
 			},
 		},
 		Spec: istiov1beta1.VirtualService{
-			Hosts:    []string{host.Host},
+			Hosts: []string{host.Host},
 			Gateways: []string{
 				meshGatewayName,
 				gatewayName,
@@ -187,7 +287,7 @@ func (r *UnionTeamServiceAccountsReconciler) createVirtualServiceForHost(host *d
 					Route: []*istiov1beta1.HTTPRouteDestination{
 						{
 							Destination: &istiov1beta1.Destination{
-								Host: gatewayHost, 
+								Host: gatewayHost,
 								Port: &istiov1beta1.PortSelector{
 									Number: 80,
 								},
@@ -207,7 +307,7 @@ func (r *UnionTeamServiceAccountsReconciler) createVirtualServiceForHost(host *d
 					Route: []*istiov1beta1.HTTPRouteDestination{
 						{
 							Destination: &istiov1beta1.Destination{
-								Host: host.Host, 
+								Host: host.Host,
 								Port: &istiov1beta1.PortSelector{
 									Number: uint32(host.Port),
 								},

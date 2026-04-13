@@ -55,8 +55,13 @@ type UnionTeamServiceAccountsReconciler struct {
 func (r *UnionTeamServiceAccountsReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 
+	err := r.cleanupUnusedHosts(ctx)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
 	utsa := &datanavnov1.UnionTeamServiceAccounts{}
-	err := r.Get(ctx, req.NamespacedName, utsa)
+	err = r.Get(ctx, req.NamespacedName, utsa)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			log.Info("UnionTeamServiceAccounts resource not found, ignoring since object must be deleted")
