@@ -40,6 +40,7 @@ import (
 
 	iam "github.com/nais/liberator/pkg/apis/iam.cnrm.cloud.google.com/v1beta1"
 	istio "istio.io/client-go/pkg/apis/networking/v1beta1"
+	istiosecurity "istio.io/client-go/pkg/apis/security/v1beta1"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -54,6 +55,7 @@ func init() {
 	utilruntime.Must(datanavnov1.AddToScheme(scheme))
 	utilruntime.Must(iam.AddToScheme(scheme))
 	utilruntime.Must(istio.AddToScheme(scheme))
+	utilruntime.Must(istiosecurity.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
 }
 

@@ -112,7 +112,12 @@ func (r *UnionTeamServiceAccountsReconciler) Reconcile(ctx context.Context, req 
 		return ctrl.Result{}, err
 	}
 
-	err = r.ensureIstioServiceEntry(ctx, unionEnv)
+	err = r.ensureIstioExternalHost(ctx, unionEnv)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	err = r.ensureAuthorizationPolicies(ctx, unionEnv)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
