@@ -37,6 +37,8 @@ import (
 
 	iam "github.com/nais/liberator/pkg/apis/iam.cnrm.cloud.google.com/v1beta1"
 	datanavnov1 "github.com/navikt/union-operator/api/v1"
+	istionetworking "istio.io/client-go/pkg/apis/networking/v1beta1"
+	istiosecurity "istio.io/client-go/pkg/apis/security/v1beta1"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -69,11 +71,20 @@ var _ = BeforeSuite(func() {
 	err = iam.AddToScheme(scheme.Scheme)
 	Expect(err).NotTo(HaveOccurred())
 
+	err = istionetworking.AddToScheme(scheme.Scheme)
+	Expect(err).NotTo(HaveOccurred())
+
+	err = istiosecurity.AddToScheme(scheme.Scheme)
+	Expect(err).NotTo(HaveOccurred())
+
 	// +kubebuilder:scaffold:scheme
 
 	By("bootstrapping test environment")
 	liberatorCRDPath := resolveModuleCRDPath("github.com/nais/liberator")
-	crdPaths := []string{filepath.Join("..", "..", "config", "crd", "bases")}
+	crdPaths := []string{
+		filepath.Join("..", "..", "config", "crd", "bases"),
+		filepath.Join("..", "..", ".testdata", "crds"),
+	}
 	if liberatorCRDPath != "" {
 		crdPaths = append(crdPaths, liberatorCRDPath)
 	}

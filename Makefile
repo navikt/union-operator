@@ -62,7 +62,7 @@ vet: ## Run go vet against code.
 	go vet ./...
 
 .PHONY: test
-test: manifests generate fmt vet setup-envtest ## Run tests.
+test: manifests generate fmt vet setup-envtest istio-crds ## Run tests.
 	KUBEBUILDER_ASSETS="$(shell "$(ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(LOCALBIN)" -p path)" go test $$(go list ./... | grep -v /e2e) -coverprofile cover.out
 
 # TODO(user): To use a different vendor for e2e tests, modify the setup under 'tests/e2e'.
@@ -194,6 +194,9 @@ GOLANGCI_LINT = $(LOCALBIN)/golangci-lint
 KUSTOMIZE_VERSION ?= v5.8.1
 CONTROLLER_TOOLS_VERSION ?= v0.20.1
 
+## Istio CRD version (should match istio.io/client-go version in go.mod)
+ISTIO_VERSION ?= $(shell go list -m -f '{{.Version}}' istio.io/client-go 2>/dev/null)
+
 #ENVTEST_VERSION is the version of controller-runtime release branch to fetch the envtest setup script (i.e. release-0.20)
 ENVTEST_VERSION ?= $(shell v='$(call gomodver,sigs.k8s.io/controller-runtime)'; \
   [ -n "$$v" ] || { echo "Set ENVTEST_VERSION manually (controller-runtime replace has no tag)" >&2; exit 1; }; \
@@ -237,6 +240,16 @@ $(GOLANGCI_LINT): $(LOCALBIN)
 		$(GOLANGCI_LINT) custom --destination $(LOCALBIN) --name golangci-lint-custom && \
 		mv -f $(LOCALBIN)/golangci-lint-custom $(GOLANGCI_LINT); \
 	} || true
+
+ISTIO_CRDS_DIR ?= $(shell pwd)/.testdata/crds
+
+.PHONY: istio-crds
+istio-crds: $(ISTIO_CRDS_DIR) ## Download Istio CRDs for envtest.
+$(ISTIO_CRDS_DIR):
+	@mkdir -p "$(ISTIO_CRDS_DIR)"
+	@echo "Downloading Istio CRDs ($(ISTIO_VERSION))..."
+	@curl -sSL "https://raw.githubusercontent.com/istio/api/$(ISTIO_VERSION)/kubernetes/customresourcedefinitions.gen.yaml" \
+		-o "$(ISTIO_CRDS_DIR)/istio-crds.yaml"
 
 # go-install-tool will 'go install' any package with custom target and name of binary, if it doesn't exist
 # $1 - target path with name of binary
