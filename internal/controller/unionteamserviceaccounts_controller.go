@@ -31,10 +31,20 @@ import (
 
 const unionFinalizer = "data.nav.no/finalizer"
 
+type OnpremHostMap map[string]OnpremHost
+
+type OnpremHost struct {
+	VIP []string `json:"vip,omitempty"`
+	// IPs []string `json:"ips"`
+	Port string `json:"port"`
+	Protocol string `json:"protocol"`
+}
+
 // UnionTeamServiceAccountsReconciler reconciles a UnionTeamServiceAccounts object
 type UnionTeamServiceAccountsReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
+	Scheme *runtime.Scheme 
+	OnpremHosts OnpremHostMap
 }
 
 // +kubebuilder:rbac:groups=data.nav.no,resources=unionteamserviceaccounts,verbs=get;list;watch;create;update;patch;delete

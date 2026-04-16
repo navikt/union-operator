@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"strings"
 
 	datanavnov1 "github.com/navikt/union-operator/api/v1"
 	"istio.io/api/networking/v1alpha3"
@@ -28,28 +29,91 @@ const (
 	istioGatewaySelector = "istioegressgateway"
 	egressToGatewayLabel = "egress-to-gateway"
 	egressFromGatewayLabel = "egress-from-gateway"
+	httpsProtocol = "HTTPS"
+	tcpProtocol = "TCP"
+	hostTypeLabelExternal = "external"
+	hostTypeLabelInternal = "internal"
 )
 
 func (r *UnionTeamServiceAccountsReconciler) cleanupUnusedHosts(ctx context.Context) error {
-	log := logf.FromContext(ctx)
-
 	var utsas datanavnov1.UnionTeamServiceAccountsList
 	err := r.List(ctx, &utsas)
 	if err != nil {
 		return err
 	}
 
-	hostsInUse := make(map[string]bool)
+	err = r.cleanupInternalHosts(ctx, utsas)
+	if err != nil {
+		return err
+	}
+
+	err = r.cleanupExternalHosts(ctx, utsas)
+	if err != nil {
+		return err
+	}
+
+	return nil
+
+}
+
+func (r *UnionTeamServiceAccountsReconciler) cleanupInternalHosts(ctx context.Context, utsas datanavnov1.UnionTeamServiceAccountsList) error {
+	for _, utsa := range utsas.Items {
+		for _, sa := range utsa.Spec.ServiceAccounts {
+			hosts := &istiosecurity.AuthorizationPolicyList{} 
+			err := r.List(
+				ctx, 
+				hosts, 
+				client.InNamespace(istioEgressNamespace), 
+				client.MatchingLabels{
+					"project": utsa.Spec.Project,
+					"domain": utsa.Spec.Domain,
+					"service-account": sa.Name,
+					"host-type": hostTypeLabelInternal,
+				},
+			)
+			if err != nil {
+				return err
+			}
+
+			for _, host := range hosts.Items {
+				if !r.containsHost(host, sa.InternalAllowlist) {
+					err := r.Delete(ctx, host)
+					if err != nil {
+						return err
+					}
+				}
+			}
+		}
+	
+	}
+
+	return nil
+}
+
+func (r *UnionTeamServiceAccountsReconciler) containsHost(existing *istiosecurity.AuthorizationPolicy, internalAllowlist []datanavnov1.Host) bool {
+	for _, host := range internalAllowlist {
+		if existing.Labels["host"] == host.Host {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (r *UnionTeamServiceAccountsReconciler) cleanupExternalHosts(ctx context.Context, utsas datanavnov1.UnionTeamServiceAccountsList) error {
+	log := logf.FromContext(ctx)
+
+	externalHostsInUse := make(map[string]bool)
 	for _, utsa := range utsas.Items {
 		for _, sa := range utsa.Spec.ServiceAccounts {
 			for _, host := range sa.ExternalAllowlist {
-				hostsInUse[host.Host] = true
+				externalHostsInUse[host.Host] = true
 			}
 		}
 	}
 
 	gateway := &istionetworking.Gateway{}
-	err = r.Get(ctx, types.NamespacedName{Name: gatewayName, Namespace: istioEgressNamespace}, gateway)
+	err := r.Get(ctx, types.NamespacedName{Name: gatewayName, Namespace: istioEgressNamespace}, gateway)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			log.Info("Gateway not found, skipping cleanup")
@@ -60,17 +124,17 @@ func (r *UnionTeamServiceAccountsReconciler) cleanupUnusedHosts(ctx context.Cont
 	}
 
 	for _, server := range gateway.Spec.Servers {
-		if server.Port.Protocol == "HTTPS" {
+		if server.Port.Protocol == httpsProtocol {
 			for _, host := range server.Hosts {
-				_, ok := hostsInUse[host]
+				_, ok := externalHostsInUse[host]
 				if !ok {
-					err := r.removeHost(ctx, host)
+					err := r.removeExternalHost(ctx, host)
 					if err != nil {
 						return err
 					}
 				}
 			}
-			hosts := slices.Collect(maps.Keys(hostsInUse))
+			hosts := slices.Collect(maps.Keys(externalHostsInUse))
 			slices.Sort(hosts)
 			server.Hosts = hosts
 
@@ -91,10 +155,9 @@ func (r *UnionTeamServiceAccountsReconciler) cleanupUnusedHosts(ctx context.Cont
 	}
 
 	return nil
-
 }
 
-func (r *UnionTeamServiceAccountsReconciler) removeHost(ctx context.Context, host string) error {
+func (r *UnionTeamServiceAccountsReconciler) removeExternalHost(ctx context.Context, host string) error {
 	var errs []error
 	err := r.removeServiceEntry(ctx, host)
 	if err != nil {
@@ -229,7 +292,7 @@ func (r *UnionTeamServiceAccountsReconciler) ensureIstioExternalHost(ctx context
 	return nil
 }
 
-func (r *UnionTeamServiceAccountsReconciler) serviceEntryExists(ctx context.Context, host datanavnov1.ExternalHost) (error, bool) {
+func (r *UnionTeamServiceAccountsReconciler) serviceEntryExists(ctx context.Context, host datanavnov1.Host) (error, bool) {
 	log := logf.FromContext(ctx)
 	seList := &istionetworking.ServiceEntryList{}
 	err := r.List(ctx, seList, client.InNamespace(istioEgressNamespace), client.MatchingLabels{"host": host.Host})
@@ -241,7 +304,7 @@ func (r *UnionTeamServiceAccountsReconciler) serviceEntryExists(ctx context.Cont
 	return nil, len(seList.Items) > 0
 }
 
-func (r *UnionTeamServiceAccountsReconciler) createIstioServiceEntry(ctx context.Context, host datanavnov1.ExternalHost) error {
+func (r *UnionTeamServiceAccountsReconciler) createIstioServiceEntry(ctx context.Context, host datanavnov1.Host) error {
 	se := createHTTPSServiceEntry(host)
 	err := r.Create(ctx, se)
 	if err != nil {
@@ -251,7 +314,7 @@ func (r *UnionTeamServiceAccountsReconciler) createIstioServiceEntry(ctx context
 	return nil
 }
 
-func createHTTPSServiceEntry(host datanavnov1.ExternalHost) *istionetworking.ServiceEntry {
+func createHTTPSServiceEntry(host datanavnov1.Host) *istionetworking.ServiceEntry {
 	return &istionetworking.ServiceEntry{
 		ObjectMeta: v1.ObjectMeta{
 			Name:      host.Name(),
@@ -281,7 +344,7 @@ func createHTTPSServiceEntry(host datanavnov1.ExternalHost) *istionetworking.Ser
 	}
 }
 
-func (r *UnionTeamServiceAccountsReconciler) ensureGatewayContainsHost(ctx context.Context, host datanavnov1.ExternalHost) error {
+func (r *UnionTeamServiceAccountsReconciler) ensureGatewayContainsHost(ctx context.Context, host datanavnov1.Host) error {
 	log := logf.FromContext(ctx)
 	gateway := &istionetworking.Gateway{}
 	err := r.Get(ctx, types.NamespacedName{Name: gatewayName, Namespace: istioEgressNamespace}, gateway)
@@ -313,7 +376,7 @@ func (r *UnionTeamServiceAccountsReconciler) ensureGatewayContainsHost(ctx conte
 	return nil
 }
 
-func (r *UnionTeamServiceAccountsReconciler) ensureVirtualServiceForHost(ctx context.Context, host *datanavnov1.ExternalHost) error {
+func (r *UnionTeamServiceAccountsReconciler) ensureVirtualServiceForHost(ctx context.Context, host *datanavnov1.Host) error {
 	log := logf.FromContext(ctx)
 
 	vs := &istionetworking.VirtualService{}
@@ -362,7 +425,7 @@ func (r *UnionTeamServiceAccountsReconciler) createGateway(host string) *istione
 			}
 }
 
-func (r *UnionTeamServiceAccountsReconciler) createVirtualServiceForHost(host *datanavnov1.ExternalHost) *istionetworking.VirtualService {
+func (r *UnionTeamServiceAccountsReconciler) createVirtualServiceForHost(host *datanavnov1.Host) *istionetworking.VirtualService {
 	return &istionetworking.VirtualService{
 		ObjectMeta: v1.ObjectMeta{
 			Name:      host.Name(),
@@ -426,9 +489,27 @@ func (r *UnionTeamServiceAccountsReconciler) createVirtualServiceForHost(host *d
 func (r *UnionTeamServiceAccountsReconciler) ensureAuthorizationPolicies(ctx context.Context, unionEnv *UnionEnv) error {
 	for _, sa := range unionEnv.ServiceAccounts {
 		for _, host := range sa.ExternalAllowlist {
-			err := r.ensureAuthorizationPolicyForHost(ctx, unionEnv, sa.Name, &host)
+			err := r.ensureAuthorizationPolicyForHost(ctx, unionEnv, sa.Name, &host, httpsProtocol, hostTypeLabelExternal)
 			if err != nil {
 				return err
+			}
+		}
+
+		for _, host := range sa.InternalAllowlist {
+			if hostData, ok := r.OnpremHosts[host.Host]; ok {
+				err := r.ensureAuthorizationPolicyForHost(ctx, unionEnv, sa.Name, &host, hostData.Protocol, hostTypeLabelInternal) 
+				if err != nil {
+					return err
+				}
+				for _, vip := range hostData.VIP {
+					vipHost := datanavnov1.Host{
+						Host: vip,
+					}
+					err := r.ensureAuthorizationPolicyForHost(ctx, unionEnv, sa.Name, &vipHost, hostData.Protocol, hostTypeLabelInternal)
+					if err != nil {
+						return err
+					}
+				}
 			}
 		}
 	}
@@ -436,7 +517,7 @@ func (r *UnionTeamServiceAccountsReconciler) ensureAuthorizationPolicies(ctx con
 	return nil
 }
 
-func (r *UnionTeamServiceAccountsReconciler) ensureAuthorizationPolicyForHost(ctx context.Context, unionEnv *UnionEnv, serviceAccount string, host *datanavnov1.ExternalHost) error {
+func (r *UnionTeamServiceAccountsReconciler) ensureAuthorizationPolicyForHost(ctx context.Context, unionEnv *UnionEnv, serviceAccount string, host *datanavnov1.Host, protocol, hostTypeLabel string) error {
 	_ = logf.FromContext(ctx)
 
 	apList := &istiosecurity.AuthorizationPolicyList{}
@@ -456,7 +537,10 @@ func (r *UnionTeamServiceAccountsReconciler) ensureAuthorizationPolicyForHost(ct
 	}
 
 	if len(apList.Items) < 1 {
-		ap := r.createAuthorizationPolicyForHost(unionEnv, serviceAccount, host)
+		ap, err := r.createAuthorizationPolicyForHost(unionEnv, serviceAccount, host, protocol, hostTypeLabel)
+		if err != nil {
+			return err
+		}
 		err = r.Create(ctx, ap)
 		if err != nil {
 			return err
@@ -466,7 +550,32 @@ func (r *UnionTeamServiceAccountsReconciler) ensureAuthorizationPolicyForHost(ct
 	return nil
 }
 
-func (r *UnionTeamServiceAccountsReconciler) createAuthorizationPolicyForHost(unionEnv *UnionEnv, serviceAccount string, host *datanavnov1.ExternalHost) *istiosecurity.AuthorizationPolicy {
+func (r *UnionTeamServiceAccountsReconciler) createAuthorizationPolicyForHost(unionEnv *UnionEnv, serviceAccount string, host *datanavnov1.Host, protocol, hostTypeLabel string) (*istiosecurity.AuthorizationPolicy, error) {
+	var when []*istiosecuritymodels.Condition
+	var to []*istiosecuritymodels.Rule_To
+	switch strings.ToUpper(protocol) {
+	case httpsProtocol:
+		to = []*istiosecuritymodels.Rule_To{
+						{
+							Operation: &istiosecuritymodels.Operation{
+								Hosts: []string{host.Host},
+								Paths: host.Paths,
+							},
+						},
+					}
+	case tcpProtocol:
+		when = []*istiosecuritymodels.Condition{
+						{
+							Key: "connection.sni",
+							Values: []string{
+								host.Host,
+							},
+						},
+					}
+	default:
+		return nil, fmt.Errorf("unsupported protocol: %s", protocol)
+	}
+
 	return &istiosecurity.AuthorizationPolicy{
 		ObjectMeta: v1.ObjectMeta{
 			Name:      fmt.Sprintf("%s-%s-%s-%s", unionEnv.Project, unionEnv.Domain, serviceAccount, host.Name()),
@@ -476,6 +585,7 @@ func (r *UnionTeamServiceAccountsReconciler) createAuthorizationPolicyForHost(un
 				"domain": unionEnv.Domain,
 				"service-account": serviceAccount,
 				"host": host.Host,
+				"host-type": hostTypeLabel,
 			},
 		},
 		Spec: istiosecuritymodels.AuthorizationPolicy{
@@ -489,21 +599,15 @@ func (r *UnionTeamServiceAccountsReconciler) createAuthorizationPolicyForHost(un
 							},
 						},
 					},
-					To: []*istiosecuritymodels.Rule_To{
-						{
-							Operation: &istiosecuritymodels.Operation{
-								Hosts: []string{host.Host},
-								Paths: host.Paths,
-							},
-						},
-					},
+					When: when,
+					To: to,
 				},
 			},
 		},
-	}
+	}, nil
 }
 
-func (r *UnionTeamServiceAccountsReconciler) ensureIstioDestinationRule(ctx context.Context, host datanavnov1.ExternalHost) error {
+func (r *UnionTeamServiceAccountsReconciler) ensureIstioDestinationRule(ctx context.Context, host datanavnov1.Host) error {
 	dr := &istionetworking.DestinationRuleList{}
 	err := r.List(
 		ctx, 
@@ -550,7 +654,7 @@ func (r *UnionTeamServiceAccountsReconciler) ensureIstioDestinationRule(ctx cont
 	return nil
 }
 
-func (r *UnionTeamServiceAccountsReconciler) createDestinationRuleForHostToGateway(host datanavnov1.ExternalHost) *istionetworking.DestinationRule {
+func (r *UnionTeamServiceAccountsReconciler) createDestinationRuleForHostToGateway(host datanavnov1.Host) *istionetworking.DestinationRule {
 	return r.createDestinationRuleForHost(
 		fmt.Sprintf("%s-to-gateway", host.Name()),
 		egressToGatewayLabel, 
@@ -567,7 +671,7 @@ func (r *UnionTeamServiceAccountsReconciler) createDestinationRuleForHostToGatew
 	})
 }
 
-func (r *UnionTeamServiceAccountsReconciler) createDestinationRuleForHostFromGateway(host datanavnov1.ExternalHost) *istionetworking.DestinationRule {
+func (r *UnionTeamServiceAccountsReconciler) createDestinationRuleForHostFromGateway(host datanavnov1.Host) *istionetworking.DestinationRule {
 	return r.createDestinationRuleForHost(
 		fmt.Sprintf("%s-from-gateway", host.Name()),
 		egressFromGatewayLabel, 
@@ -583,7 +687,7 @@ func (r *UnionTeamServiceAccountsReconciler) createDestinationRuleForHostFromGat
 	})
 }
 
-func (r *UnionTeamServiceAccountsReconciler) createDestinationRuleForHost(name, gatewayLabel, targetHost string, host datanavnov1.ExternalHost, portTrafficPolicy *v1alpha3.TrafficPolicy_PortTrafficPolicy) *istionetworking.DestinationRule {
+func (r *UnionTeamServiceAccountsReconciler) createDestinationRuleForHost(name, gatewayLabel, targetHost string, host datanavnov1.Host, portTrafficPolicy *v1alpha3.TrafficPolicy_PortTrafficPolicy) *istionetworking.DestinationRule {
 	return &istionetworking.DestinationRule{
 			ObjectMeta: v1.ObjectMeta{
 				Name:      name,

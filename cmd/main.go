@@ -19,10 +19,12 @@ package main
 import (
 	"crypto/tls"
 	"flag"
+	"fmt"
 	"os"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
+	"go.yaml.in/yaml/v2"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
 	"k8s.io/apimachinery/pkg/runtime"
@@ -35,6 +37,7 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
+	"github.com/davecgh/go-spew/spew"
 	datanavnov1 "github.com/navikt/union-operator/api/v1"
 	"github.com/navikt/union-operator/internal/controller"
 
@@ -185,9 +188,26 @@ func main() {
 		os.Exit(1)
 	}
 
+	onpremHostData, err := os.ReadFile("../dataplattform-iac/shared/onprem-hosts.yaml")
+	if err != nil {
+		setupLog.Error(err, "Failed to read onprem-hosts.yaml")
+		os.Exit(1)
+	}
+
+	var onpremHosts controller.OnpremHostMap
+	err = yaml.Unmarshal(onpremHostData, &onpremHosts)
+	if err != nil {
+		setupLog.Error(err, "Failed to unmarshal onprem-hosts.yaml")
+		os.Exit(1)
+	}
+
+	fmt.Println("On-prem hosts loaded from onprem-hosts.yaml:")
+	spew.Dump(onpremHosts)
+
 	if err := (&controller.UnionTeamServiceAccountsReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
+		OnpremHosts: onpremHosts,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "Failed to create controller", "controller", "UnionTeamServiceAccounts")
 		os.Exit(1)

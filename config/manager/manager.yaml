@@ -66,6 +66,9 @@ spec:
         image: controller:latest
         name: manager
         ports: []
+        env:
+        - name: ONPREM_HOSTMAP_PATH
+          value: /etc/config/onprem-hostmap.yaml
         securityContext:
           readOnlyRootFilesystem: true
           allowPrivilegeEscalation: false
@@ -93,7 +96,13 @@ spec:
           requests:
             cpu: 10m
             memory: 64Mi
-        volumeMounts: []
-      volumes: []
+        volumeMounts:
+        - name: onprem-hostmap
+          mountPath: /etc/config
+          readOnly: true
+      volumes:
+      - name: onprem-hostmap
+        configMap:
+          name: onprem-hostmap
       serviceAccountName: controller-manager
       terminationGracePeriodSeconds: 10

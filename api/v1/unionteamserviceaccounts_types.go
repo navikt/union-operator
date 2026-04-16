@@ -44,19 +44,19 @@ type UnionServiceAccount struct {
 	// +required
 	Name string `json:"name"`
 	// +optional
-	ExternalAllowlist []ExternalHost `json:"externalAllowlist,omitempty"`
+	ExternalAllowlist []Host `json:"externalAllowlist,omitempty"`
 	// +optional
-	InternalAllowlist []string `json:"internalAllowlist,omitempty"`
+	InternalAllowlist []Host `json:"internalAllowlist,omitempty"`
 }
 
-type ExternalHost struct {
+type Host struct {
 	// +required
 	Host string `json:"host"`
 	// +optional
 	Paths []string `json:"paths,omitempty"`
 }
 
-func (a ExternalHost) Name() string {
+func (a Host) Name() string {
 	return strings.ReplaceAll(a.Host, ".", "-")
 }
 
