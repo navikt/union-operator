@@ -15,6 +15,7 @@ import (
 	istionetworking "istio.io/client-go/pkg/apis/networking/v1beta1"
 	istiosecurity "istio.io/client-go/pkg/apis/security/v1beta1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -22,17 +23,17 @@ import (
 )
 
 const (
-	istioEgressNamespace = "istio-egress"
-	gatewayHost          = "istio-egressgateway.istio-egress.svc.cluster.local"
-	gatewayName          = "istio-egressgateway"
-	meshGatewayName      = "mesh"
-	istioGatewaySelector = "istioegressgateway"
-	egressToGatewayLabel = "egress-to-gateway"
+	istioEgressNamespace   = "istio-egress"
+	gatewayHost            = "istio-egressgateway.istio-egress.svc.cluster.local"
+	gatewayName            = "istio-egressgateway"
+	meshGatewayName        = "mesh"
+	istioGatewaySelector   = "istioegressgateway"
+	egressToGatewayLabel   = "egress-to-gateway"
 	egressFromGatewayLabel = "egress-from-gateway"
-	httpsProtocol = "HTTPS"
-	tcpProtocol = "TCP"
-	hostTypeLabelExternal = "external"
-	hostTypeLabelInternal = "internal"
+	httpsProtocol          = "HTTPS"
+	tcpProtocol            = "TCP"
+	hostTypeLabelExternal  = "external"
+	hostTypeLabelInternal  = "internal"
 )
 
 func (r *UnionTeamServiceAccountsReconciler) cleanupUnusedHosts(ctx context.Context) error {
@@ -59,16 +60,16 @@ func (r *UnionTeamServiceAccountsReconciler) cleanupUnusedHosts(ctx context.Cont
 func (r *UnionTeamServiceAccountsReconciler) cleanupInternalHosts(ctx context.Context, utsas datanavnov1.UnionTeamServiceAccountsList) error {
 	for _, utsa := range utsas.Items {
 		for _, sa := range utsa.Spec.ServiceAccounts {
-			hosts := &istiosecurity.AuthorizationPolicyList{} 
+			hosts := &istiosecurity.AuthorizationPolicyList{}
 			err := r.List(
-				ctx, 
-				hosts, 
-				client.InNamespace(istioEgressNamespace), 
+				ctx,
+				hosts,
+				client.InNamespace(istioEgressNamespace),
 				client.MatchingLabels{
-					"project": utsa.Spec.Project,
-					"domain": utsa.Spec.Domain,
+					"project":         utsa.Spec.Project,
+					"domain":          utsa.Spec.Domain,
 					"service-account": sa.Name,
-					"host-type": hostTypeLabelInternal,
+					"host-type":       hostTypeLabelInternal,
 				},
 			)
 			if err != nil {
@@ -84,7 +85,7 @@ func (r *UnionTeamServiceAccountsReconciler) cleanupInternalHosts(ctx context.Co
 				}
 			}
 		}
-	
+
 	}
 
 	return nil
@@ -159,95 +160,36 @@ func (r *UnionTeamServiceAccountsReconciler) cleanupExternalHosts(ctx context.Co
 
 func (r *UnionTeamServiceAccountsReconciler) removeExternalHost(ctx context.Context, host string) error {
 	var errs []error
-	err := r.removeServiceEntry(ctx, host)
-	if err != nil {
-		errs = append(errs, err)
-	}
-
-	err = r.removeVirtualService(ctx, host)
-	if err != nil {
-		errs = append(errs, err)
-	}
-
-	err = r.removeDestinationRules(ctx, host)
-	if err != nil {
-		errs = append(errs, err)
-	}
-
-	err = r.removeAuthorizationPolicy(ctx, host)
-	if err != nil {
-		errs = append(errs, err)
-	}
-
-	return errors.Join(errs...)
-}
-
-func (r *UnionTeamServiceAccountsReconciler) removeServiceEntry(ctx context.Context, host string) error {
-	seList := &istionetworking.ServiceEntryList{}
-	err := r.List(ctx, seList, client.InNamespace(istioEgressNamespace), client.MatchingLabels{"host": host})
-	if err != nil {
-		return err
-	}
-
-	var errs []error
-	for _, se := range seList.Items {
-		err = r.Delete(ctx, se)
-		if err != nil {
+	for _, list := range []client.ObjectList{
+		&istionetworking.ServiceEntryList{},
+		&istionetworking.VirtualServiceList{},
+		&istionetworking.DestinationRuleList{},
+		&istiosecurity.AuthorizationPolicyList{},
+	} {
+		if err := r.removeByHostLabel(ctx, host, list); err != nil {
 			errs = append(errs, err)
 		}
 	}
-
 	return errors.Join(errs...)
 }
 
-func (r *UnionTeamServiceAccountsReconciler) removeVirtualService(ctx context.Context, host string) error {
-	vsList := &istionetworking.VirtualServiceList{}
-	err := r.List(ctx, vsList, client.InNamespace(istioEgressNamespace), client.MatchingLabels{"host": host})
+func (r *UnionTeamServiceAccountsReconciler) removeByHostLabel(ctx context.Context, host string, list client.ObjectList) error {
+	err := r.List(ctx, list, client.InNamespace(istioEgressNamespace), client.MatchingLabels{"host": host})
+	if err != nil {
+		return err
+	}
+
+	items, err := meta.ExtractList(list)
 	if err != nil {
 		return err
 	}
 
 	var errs []error
-	for _, vs := range vsList.Items {
-		err = r.Delete(ctx, vs)
-		if err != nil {
-			errs = append(errs, err)
-		}
-	}
-
-	return errors.Join(errs...)
-}
-
-func (r *UnionTeamServiceAccountsReconciler) removeDestinationRules(ctx context.Context, host string) error {
- 	drList := &istionetworking.DestinationRuleList{}
-	err := r.List(ctx, drList, client.InNamespace(istioEgressNamespace), client.MatchingLabels{"host": host})
-	if err != nil {
-		return err
-	}
-
-	var errs []error
-	for _, vs := range drList.Items {
-		err = r.Delete(ctx, vs)
-		if err != nil {
-			errs = append(errs, err)
-		}
-	}
-
-	return errors.Join(errs...)
-}
-
-func (r *UnionTeamServiceAccountsReconciler) removeAuthorizationPolicy(ctx context.Context, host string) error {
-	apList := &istiosecurity.AuthorizationPolicyList{}
-	err := r.List(ctx, apList, client.InNamespace(istioEgressNamespace), client.MatchingLabels{"host": host})
-	if err != nil {
-		return err
-	}
-
-	var errs []error
-	for _, authPol := range apList.Items {
-		err = r.Delete(ctx, authPol)
-		if err != nil {
-			errs = append(errs, err)
+	for _, item := range items {
+		if obj, ok := item.(client.Object); ok {
+			if err := r.Delete(ctx, obj); err != nil {
+				errs = append(errs, err)
+			}
 		}
 	}
 
@@ -400,29 +342,29 @@ func (r *UnionTeamServiceAccountsReconciler) ensureVirtualServiceForHost(ctx con
 
 func (r *UnionTeamServiceAccountsReconciler) createGateway(host string) *istionetworking.Gateway {
 	return &istionetworking.Gateway{
-				ObjectMeta: v1.ObjectMeta{
-					Name:      gatewayName,
-					Namespace: istioEgressNamespace,
-				},
-				Spec: istionetworkingmodels.Gateway{
-					Selector: map[string]string{
-						"app": istioGatewaySelector,
+		ObjectMeta: v1.ObjectMeta{
+			Name:      gatewayName,
+			Namespace: istioEgressNamespace,
+		},
+		Spec: istionetworkingmodels.Gateway{
+			Selector: map[string]string{
+				"app": istioGatewaySelector,
+			},
+			Servers: []*istionetworkingmodels.Server{
+				{
+					Port: &istionetworkingmodels.Port{
+						Number:   80,
+						Name:     "http-port-for-tls-origination",
+						Protocol: "HTTPS",
 					},
-					Servers: []*istionetworkingmodels.Server{
-						{
-							Port: &istionetworkingmodels.Port{
-								Number:   80,
-								Name:     "http-port-for-tls-origination",
-								Protocol: "HTTPS",
-							},
-							Hosts: []string{host},
-							Tls: &istionetworkingmodels.ServerTLSSettings{
-								Mode: istionetworkingmodels.ServerTLSSettings_ISTIO_MUTUAL,
-							},
-						},
+					Hosts: []string{host},
+					Tls: &istionetworkingmodels.ServerTLSSettings{
+						Mode: istionetworkingmodels.ServerTLSSettings_ISTIO_MUTUAL,
 					},
 				},
-			}
+			},
+		},
+	}
 }
 
 func (r *UnionTeamServiceAccountsReconciler) createVirtualServiceForHost(host *datanavnov1.Host) *istionetworking.VirtualService {
@@ -475,7 +417,7 @@ func (r *UnionTeamServiceAccountsReconciler) createVirtualServiceForHost(host *d
 							Destination: &istionetworkingmodels.Destination{
 								Host: host.Host,
 								Port: &istionetworkingmodels.PortSelector{
-									Number: 443, 
+									Number: 443,
 								},
 							},
 						},
@@ -497,7 +439,7 @@ func (r *UnionTeamServiceAccountsReconciler) ensureAuthorizationPolicies(ctx con
 
 		for _, host := range sa.InternalAllowlist {
 			if hostData, ok := r.OnpremHosts[host.Host]; ok {
-				err := r.ensureAuthorizationPolicyForHost(ctx, unionEnv, sa.Name, &host, hostData.Protocol, hostTypeLabelInternal) 
+				err := r.ensureAuthorizationPolicyForHost(ctx, unionEnv, sa.Name, &host, hostData.Protocol, hostTypeLabelInternal)
 				if err != nil {
 					return err
 				}
@@ -522,14 +464,14 @@ func (r *UnionTeamServiceAccountsReconciler) ensureAuthorizationPolicyForHost(ct
 
 	apList := &istiosecurity.AuthorizationPolicyList{}
 	err := r.List(
-		ctx, 
-		apList, 
-		client.InNamespace(istioEgressNamespace), 
+		ctx,
+		apList,
+		client.InNamespace(istioEgressNamespace),
 		client.MatchingLabels{
-			"project": unionEnv.Project,
-			"domain": unionEnv.Domain,
+			"project":         unionEnv.Project,
+			"domain":          unionEnv.Domain,
 			"service-account": serviceAccount,
-			"host": host.Host,
+			"host":            host.Host,
 		},
 	)
 	if err != nil {
@@ -556,22 +498,22 @@ func (r *UnionTeamServiceAccountsReconciler) createAuthorizationPolicyForHost(un
 	switch strings.ToUpper(protocol) {
 	case httpsProtocol:
 		to = []*istiosecuritymodels.Rule_To{
-						{
-							Operation: &istiosecuritymodels.Operation{
-								Hosts: []string{host.Host},
-								Paths: host.Paths,
-							},
-						},
-					}
+			{
+				Operation: &istiosecuritymodels.Operation{
+					Hosts: []string{host.Host},
+					Paths: host.Paths,
+				},
+			},
+		}
 	case tcpProtocol:
 		when = []*istiosecuritymodels.Condition{
-						{
-							Key: "connection.sni",
-							Values: []string{
-								host.Host,
-							},
-						},
-					}
+			{
+				Key: "connection.sni",
+				Values: []string{
+					host.Host,
+				},
+			},
+		}
 	default:
 		return nil, fmt.Errorf("unsupported protocol: %s", protocol)
 	}
@@ -581,11 +523,11 @@ func (r *UnionTeamServiceAccountsReconciler) createAuthorizationPolicyForHost(un
 			Name:      fmt.Sprintf("%s-%s-%s-%s", unionEnv.Project, unionEnv.Domain, serviceAccount, host.Name()),
 			Namespace: istioEgressNamespace,
 			Labels: map[string]string{
-				"project": unionEnv.Project,
-				"domain": unionEnv.Domain,
+				"project":         unionEnv.Project,
+				"domain":          unionEnv.Domain,
 				"service-account": serviceAccount,
-				"host": host.Host,
-				"host-type": hostTypeLabel,
+				"host":            host.Host,
+				"host-type":       hostTypeLabel,
 			},
 		},
 		Spec: istiosecuritymodels.AuthorizationPolicy{
@@ -600,7 +542,7 @@ func (r *UnionTeamServiceAccountsReconciler) createAuthorizationPolicyForHost(un
 						},
 					},
 					When: when,
-					To: to,
+					To:   to,
 				},
 			},
 		},
@@ -610,9 +552,9 @@ func (r *UnionTeamServiceAccountsReconciler) createAuthorizationPolicyForHost(un
 func (r *UnionTeamServiceAccountsReconciler) ensureIstioDestinationRule(ctx context.Context, host datanavnov1.Host) error {
 	dr := &istionetworking.DestinationRuleList{}
 	err := r.List(
-		ctx, 
-		dr, 
-		client.InNamespace(istioEgressNamespace), 
+		ctx,
+		dr,
+		client.InNamespace(istioEgressNamespace),
 		client.MatchingLabels{
 			"host": host.Host,
 			"type": egressToGatewayLabel,
@@ -621,7 +563,7 @@ func (r *UnionTeamServiceAccountsReconciler) ensureIstioDestinationRule(ctx cont
 	if err != nil {
 		return err
 	}
-	
+
 	if len(dr.Items) < 1 {
 		destinationRule := r.createDestinationRuleForHostToGateway(host)
 		err = r.Create(ctx, destinationRule)
@@ -631,9 +573,9 @@ func (r *UnionTeamServiceAccountsReconciler) ensureIstioDestinationRule(ctx cont
 	}
 
 	err = r.List(
-		ctx, 
-		dr, 
-		client.InNamespace(istioEgressNamespace), 
+		ctx,
+		dr,
+		client.InNamespace(istioEgressNamespace),
 		client.MatchingLabels{
 			"host": host.Host,
 			"type": egressFromGatewayLabel,
@@ -642,7 +584,7 @@ func (r *UnionTeamServiceAccountsReconciler) ensureIstioDestinationRule(ctx cont
 	if err != nil {
 		return err
 	}
-	
+
 	if len(dr.Items) < 1 {
 		destinationRule := r.createDestinationRuleForHostFromGateway(host)
 		err = r.Create(ctx, destinationRule)
@@ -657,8 +599,8 @@ func (r *UnionTeamServiceAccountsReconciler) ensureIstioDestinationRule(ctx cont
 func (r *UnionTeamServiceAccountsReconciler) createDestinationRuleForHostToGateway(host datanavnov1.Host) *istionetworking.DestinationRule {
 	return r.createDestinationRuleForHost(
 		fmt.Sprintf("%s-to-gateway", host.Name()),
-		egressToGatewayLabel, 
-		gatewayHost, 
+		egressToGatewayLabel,
+		gatewayHost,
 		host,
 		&v1alpha3.TrafficPolicy_PortTrafficPolicy{
 			Port: &istionetworkingmodels.PortSelector{
@@ -666,16 +608,16 @@ func (r *UnionTeamServiceAccountsReconciler) createDestinationRuleForHostToGatew
 			},
 			Tls: &istionetworkingmodels.ClientTLSSettings{
 				Mode: istionetworkingmodels.ClientTLSSettings_ISTIO_MUTUAL,
-				Sni: host.Host,
+				Sni:  host.Host,
 			},
-	})
+		})
 }
 
 func (r *UnionTeamServiceAccountsReconciler) createDestinationRuleForHostFromGateway(host datanavnov1.Host) *istionetworking.DestinationRule {
 	return r.createDestinationRuleForHost(
 		fmt.Sprintf("%s-from-gateway", host.Name()),
-		egressFromGatewayLabel, 
-		host.Host, 
+		egressFromGatewayLabel,
+		host.Host,
 		host,
 		&v1alpha3.TrafficPolicy_PortTrafficPolicy{
 			Port: &istionetworkingmodels.PortSelector{
@@ -684,26 +626,26 @@ func (r *UnionTeamServiceAccountsReconciler) createDestinationRuleForHostFromGat
 			Tls: &istionetworkingmodels.ClientTLSSettings{
 				Mode: istionetworkingmodels.ClientTLSSettings_SIMPLE,
 			},
-	})
+		})
 }
 
 func (r *UnionTeamServiceAccountsReconciler) createDestinationRuleForHost(name, gatewayLabel, targetHost string, host datanavnov1.Host, portTrafficPolicy *v1alpha3.TrafficPolicy_PortTrafficPolicy) *istionetworking.DestinationRule {
 	return &istionetworking.DestinationRule{
-			ObjectMeta: v1.ObjectMeta{
-				Name:      name,
-				Namespace: istioEgressNamespace,
-				Labels: map[string]string{
-					"host": host.Host,
-					"type": gatewayLabel,
+		ObjectMeta: v1.ObjectMeta{
+			Name:      name,
+			Namespace: istioEgressNamespace,
+			Labels: map[string]string{
+				"host": host.Host,
+				"type": gatewayLabel,
+			},
+		},
+		Spec: istionetworkingmodels.DestinationRule{
+			Host: targetHost,
+			TrafficPolicy: &istionetworkingmodels.TrafficPolicy{
+				PortLevelSettings: []*v1alpha3.TrafficPolicy_PortTrafficPolicy{
+					portTrafficPolicy,
 				},
 			},
-			Spec: istionetworkingmodels.DestinationRule{
-				Host: targetHost,
-				TrafficPolicy: &istionetworkingmodels.TrafficPolicy{
-					PortLevelSettings: []*v1alpha3.TrafficPolicy_PortTrafficPolicy{
-						portTrafficPolicy,
-					},
-				},
-			},
-	}	
+		},
+	}
 }
