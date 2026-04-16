@@ -27,24 +27,17 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	datanavnov1 "github.com/navikt/union-operator/api/v1"
+	"github.com/navikt/union-operator/internal/istio"
+	uniontypes "github.com/navikt/union-operator/internal/types"
 )
 
 const unionFinalizer = "data.nav.no/finalizer"
 
-type OnpremHostMap map[string]OnpremHost
-
-type OnpremHost struct {
-	VIP []string `json:"vip,omitempty"`
-	// IPs []string `json:"ips"`
-	Port string `json:"port"`
-	Protocol string `json:"protocol"`
-}
-
 // UnionTeamServiceAccountsReconciler reconciles a UnionTeamServiceAccounts object
 type UnionTeamServiceAccountsReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme 
-	OnpremHosts OnpremHostMap
+	Scheme      *runtime.Scheme
+	OnpremHosts uniontypes.OnpremHostMap
 }
 
 // +kubebuilder:rbac:groups=data.nav.no,resources=unionteamserviceaccounts,verbs=get;list;watch;create;update;patch;delete
@@ -65,13 +58,13 @@ type UnionTeamServiceAccountsReconciler struct {
 func (r *UnionTeamServiceAccountsReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 
-	err := r.cleanupUnusedHosts(ctx)
-	if err != nil {
-		return ctrl.Result{}, err
+	istioReconciler := istio.Reconciler{
+		Client:      r.Client,
+		OnpremHosts: r.OnpremHosts,
 	}
 
 	utsa := &datanavnov1.UnionTeamServiceAccounts{}
-	err = r.Get(ctx, req.NamespacedName, utsa)
+	err := r.Get(ctx, req.NamespacedName, utsa)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			log.Info("UnionTeamServiceAccounts resource not found, ignoring since object must be deleted")
@@ -81,7 +74,7 @@ func (r *UnionTeamServiceAccountsReconciler) Reconcile(ctx context.Context, req 
 		return ctrl.Result{}, err
 	}
 
-	unionEnv := &UnionEnv{
+	unionEnv := &uniontypes.UnionEnv{
 		Project:         utsa.Spec.Project,
 		Domain:          utsa.Spec.Domain,
 		ServiceAccounts: utsa.Spec.ServiceAccounts,
@@ -121,13 +114,15 @@ func (r *UnionTeamServiceAccountsReconciler) Reconcile(ctx context.Context, req 
 	if err := r.updateServiceAccountsForDomain(ctx, unionEnv); err != nil {
 		return ctrl.Result{}, err
 	}
-
-	err = r.ensureIstioExternalHost(ctx, unionEnv)
+	err = istioReconciler.EnsureExternalHosts(ctx, unionEnv)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
-
-	err = r.ensureAuthorizationPolicies(ctx, unionEnv)
+	err = istioReconciler.EnsureAuthorizationPolicies(ctx, unionEnv)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	err = istioReconciler.CleanupUnusedHosts(ctx)
 	if err != nil {
 		return ctrl.Result{}, err
 	}

@@ -40,6 +40,7 @@ import (
 	"github.com/davecgh/go-spew/spew"
 	datanavnov1 "github.com/navikt/union-operator/api/v1"
 	"github.com/navikt/union-operator/internal/controller"
+	uniontypes "github.com/navikt/union-operator/internal/types"
 
 	iam "github.com/nais/liberator/pkg/apis/iam.cnrm.cloud.google.com/v1beta1"
 	istio "istio.io/client-go/pkg/apis/networking/v1beta1"
@@ -194,7 +195,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	var onpremHosts controller.OnpremHostMap
+	var onpremHosts uniontypes.OnpremHostMap
 	err = yaml.Unmarshal(onpremHostData, &onpremHosts)
 	if err != nil {
 		setupLog.Error(err, "Failed to unmarshal onprem-hosts.yaml")
@@ -205,8 +206,8 @@ func main() {
 	spew.Dump(onpremHosts)
 
 	if err := (&controller.UnionTeamServiceAccountsReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Client:      mgr.GetClient(),
+		Scheme:      mgr.GetScheme(),
 		OnpremHosts: onpremHosts,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "Failed to create controller", "controller", "UnionTeamServiceAccounts")
