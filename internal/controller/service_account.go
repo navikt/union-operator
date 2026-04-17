@@ -13,6 +13,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	iam "github.com/nais/liberator/pkg/apis/iam.cnrm.cloud.google.com/v1beta1"
+	uniontypes "github.com/navikt/union-operator/internal/types"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -26,7 +27,7 @@ const (
 	FastRegistrationBucket = "restricted-dev-fast-registration"
 )
 
-func (r *UnionTeamServiceAccountsReconciler) updateServiceAccountsForDomain(ctx context.Context, unionEnv *UnionEnv) error {
+func (r *UnionTeamServiceAccountsReconciler) updateServiceAccountsForDomain(ctx context.Context, unionEnv *uniontypes.UnionEnv) error {
 	log := logf.FromContext(ctx)
 	existing := &v1.ServiceAccountList{}
 
@@ -53,7 +54,7 @@ func (r *UnionTeamServiceAccountsReconciler) updateServiceAccountsForDomain(ctx 
 // cleanupAllResources deletes all ServiceAccounts, IAMServiceAccounts, and
 // IAMPolicyMembers managed by this controller for the given UnionEnv.
 // This is called by the finalizer when the CR is being deleted.
-func (r *UnionTeamServiceAccountsReconciler) cleanupAllResources(ctx context.Context, unionEnv *UnionEnv) error {
+func (r *UnionTeamServiceAccountsReconciler) cleanupAllResources(ctx context.Context, unionEnv *uniontypes.UnionEnv) error {
 	log := logf.FromContext(ctx)
 	existing := &v1.ServiceAccountList{}
 
@@ -87,7 +88,7 @@ func (r *UnionTeamServiceAccountsReconciler) cleanupAllResources(ctx context.Con
 
 func (r *UnionTeamServiceAccountsReconciler) createOrUpdateServiceAccounts(
 	ctx context.Context,
-	unionEnv *UnionEnv,
+	unionEnv *uniontypes.UnionEnv,
 ) error {
 	for _, sa := range unionEnv.ServiceAccounts {
 		if err := r.reconcileServiceAccountForDomain(ctx, unionEnv, sa); err != nil {
@@ -110,13 +111,13 @@ type IAMPolicyMemberOpts struct {
 	APIVersion string
 }
 
-func (r *UnionTeamServiceAccountsReconciler) createIAMPolicyMembers(ctx context.Context, unionEnv *UnionEnv, sa datanavnov1.UnionServiceAccount) error {
+func (r *UnionTeamServiceAccountsReconciler) createIAMPolicyMembers(ctx context.Context, unionEnv *uniontypes.UnionEnv, sa datanavnov1.UnionServiceAccount) error {
 
 	workloadIdentity := IAMPolicyMemberOpts{
 		Name:       fmt.Sprintf("%s-workload-identity-user", sa.Name),
 		Role:       "roles/iam.workloadIdentityUser",
 		Kind:       "IAMServiceAccount",
-		External:   fmt.Sprintf("projects/%s/serviceAccounts/%s@%s.iam.gserviceaccount.com", GCPProjectName, unionEnv.googleServiceAccountName(sa.Name), GCPProjectName),
+		External:   fmt.Sprintf("projects/%s/serviceAccounts/%s@%s.iam.gserviceaccount.com", GCPProjectName, unionEnv.GoogleServiceAccountName(sa.Name), GCPProjectName),
 		APIVersion: "iam.cnrm.cloud.google.com/v1beta1",
 		Member:     fmt.Sprintf("%s.svc.id.goog[%s/%s]", GCPProjectName, unionEnv.Namespace(), sa.Name),
 	}
@@ -127,7 +128,7 @@ func (r *UnionTeamServiceAccountsReconciler) createIAMPolicyMembers(ctx context.
 		Kind:       "StorageBucket",
 		External:   DataBucket,
 		APIVersion: "storage.cnrm.cloud.google.com/v1beta1",
-		Member:     fmt.Sprintf("%s@%s.iam.gserviceaccount.com", unionEnv.googleServiceAccountName(sa.Name), GCPProjectName),
+		Member:     fmt.Sprintf("%s@%s.iam.gserviceaccount.com", unionEnv.GoogleServiceAccountName(sa.Name), GCPProjectName),
 	}
 	fastRegistrationBucket := IAMPolicyMemberOpts{
 		Name:       fmt.Sprintf("%s-union-fast-registration-bucket-viewer", sa.Name),
@@ -135,7 +136,7 @@ func (r *UnionTeamServiceAccountsReconciler) createIAMPolicyMembers(ctx context.
 		Kind:       "StorageBucket",
 		External:   FastRegistrationBucket,
 		APIVersion: "storage.cnrm.cloud.google.com/v1beta1",
-		Member:     fmt.Sprintf("%s@%s.iam.gserviceaccount.com", unionEnv.googleServiceAccountName(sa.Name), GCPProjectName),
+		Member:     fmt.Sprintf("%s@%s.iam.gserviceaccount.com", unionEnv.GoogleServiceAccountName(sa.Name), GCPProjectName),
 	}
 
 	policyMembers := []IAMPolicyMemberOpts{
@@ -155,7 +156,7 @@ func (r *UnionTeamServiceAccountsReconciler) createIAMPolicyMembers(ctx context.
 
 func (r *UnionTeamServiceAccountsReconciler) createIAMPolicyMember(
 	ctx context.Context,
-	unionEnv *UnionEnv,
+	unionEnv *uniontypes.UnionEnv,
 	opts IAMPolicyMemberOpts,
 ) error {
 	log := logf.FromContext(ctx)
@@ -201,16 +202,16 @@ func (r *UnionTeamServiceAccountsReconciler) createIAMPolicyMember(
 	return nil
 }
 
-func (r *UnionTeamServiceAccountsReconciler) reconcileServiceAccountForDomain(ctx context.Context, unionEnv *UnionEnv, serviceAccount datanavnov1.UnionServiceAccount) error {
+func (r *UnionTeamServiceAccountsReconciler) reconcileServiceAccountForDomain(ctx context.Context, unionEnv *uniontypes.UnionEnv, serviceAccount datanavnov1.UnionServiceAccount) error {
 	if err := r.reconcileIAMServiceAccount(ctx, unionEnv, serviceAccount); err != nil {
 		return err
 	}
 	return r.reconcileServiceAccount(ctx, unionEnv, serviceAccount)
 }
 
-func (r *UnionTeamServiceAccountsReconciler) reconcileIAMServiceAccount(ctx context.Context, unionEnv *UnionEnv, serviceAccount datanavnov1.UnionServiceAccount) error {
+func (r *UnionTeamServiceAccountsReconciler) reconcileIAMServiceAccount(ctx context.Context, unionEnv *uniontypes.UnionEnv, serviceAccount datanavnov1.UnionServiceAccount) error {
 	log := logf.FromContext(ctx)
-	googleServiceAccountName := unionEnv.googleServiceAccountName(serviceAccount.Name)
+	googleServiceAccountName := unionEnv.GoogleServiceAccountName(serviceAccount.Name)
 
 	iamServiceAccount := &iam.IAMServiceAccount{
 		ObjectMeta: metav1.ObjectMeta{
@@ -250,9 +251,9 @@ func (r *UnionTeamServiceAccountsReconciler) reconcileIAMServiceAccount(ctx cont
 	return nil
 }
 
-func (r *UnionTeamServiceAccountsReconciler) reconcileServiceAccount(ctx context.Context, unionEnv *UnionEnv, serviceAccount datanavnov1.UnionServiceAccount) error {
+func (r *UnionTeamServiceAccountsReconciler) reconcileServiceAccount(ctx context.Context, unionEnv *uniontypes.UnionEnv, serviceAccount datanavnov1.UnionServiceAccount) error {
 	log := logf.FromContext(ctx)
-	googleServiceAccountName := unionEnv.googleServiceAccountName(serviceAccount.Name)
+	googleServiceAccountName := unionEnv.GoogleServiceAccountName(serviceAccount.Name)
 
 	sa := &v1.ServiceAccount{
 		ObjectMeta: metav1.ObjectMeta{
@@ -279,7 +280,7 @@ func (r *UnionTeamServiceAccountsReconciler) reconcileServiceAccount(ctx context
 
 func (r *UnionTeamServiceAccountsReconciler) cleanupRemovedServiceAccounts(
 	ctx context.Context,
-	unionEnv *UnionEnv,
+	unionEnv *uniontypes.UnionEnv,
 	existingServiceAccounts []v1.ServiceAccount,
 ) error {
 	log := logf.FromContext(ctx)
@@ -307,7 +308,7 @@ func (r *UnionTeamServiceAccountsReconciler) cleanupRemovedServiceAccounts(
 // IAMPolicyMembers for a given service account name.
 func (r *UnionTeamServiceAccountsReconciler) cleanupServiceAccount(
 	ctx context.Context,
-	unionEnv *UnionEnv,
+	unionEnv *uniontypes.UnionEnv,
 	serviceAccountName string,
 ) error {
 	log := logf.FromContext(ctx)
@@ -322,7 +323,7 @@ func (r *UnionTeamServiceAccountsReconciler) cleanupServiceAccount(
 	err := r.Get(
 		ctx,
 		types.NamespacedName{
-			Name:      unionEnv.googleServiceAccountName(serviceAccountName),
+			Name:      unionEnv.GoogleServiceAccountName(serviceAccountName),
 			Namespace: unionEnv.Namespace(),
 		},
 		googleServiceAccount,
@@ -349,7 +350,7 @@ func (r *UnionTeamServiceAccountsReconciler) cleanupServiceAccount(
 // (workload identity, data bucket, fast registration bucket) for a service account.
 func (r *UnionTeamServiceAccountsReconciler) cleanupIAMPolicyMembers(
 	ctx context.Context,
-	unionEnv *UnionEnv,
+	unionEnv *uniontypes.UnionEnv,
 	serviceAccountName string,
 ) error {
 	log := logf.FromContext(ctx)
@@ -399,7 +400,7 @@ func findByField[T datanavnov1.UnionServiceAccount | v1.ServiceAccount](serviceA
 
 // setUnionMetadata ensures the standard union labels and the provided annotations
 // are set on the given object. Existing labels and annotations are preserved.
-func setUnionMetadata(obj metav1.Object, unionEnv *UnionEnv, annotations map[string]string) {
+func setUnionMetadata(obj metav1.Object, unionEnv *uniontypes.UnionEnv, annotations map[string]string) {
 	labels := obj.GetLabels()
 	if labels == nil {
 		labels = make(map[string]string)

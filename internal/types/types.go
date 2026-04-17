@@ -1,4 +1,4 @@
-package controller
+package types
 
 import (
 	"crypto/sha256"
@@ -7,6 +7,14 @@ import (
 
 	datanavnov1 "github.com/navikt/union-operator/api/v1"
 )
+
+type OnpremHostMap map[string]OnpremHost
+
+type OnpremHost struct {
+	VIP      []string `json:"vip,omitempty"`
+	Port     string   `json:"port"`
+	Protocol string   `json:"protocol"`
+}
 
 type UnionEnv struct {
 	Project         string
@@ -18,7 +26,7 @@ func (u *UnionEnv) Namespace() string {
 	return fmt.Sprintf("%s-%s", u.Project, u.Domain)
 }
 
-func (u *UnionEnv) googleServiceAccountName(serviceAccountName string) string {
+func (u *UnionEnv) GoogleServiceAccountName(serviceAccountName string) string {
 	name := fmt.Sprintf("%s-%s-%s", serviceAccountName, u.Domain, u.Project)
 	hash := sha256.Sum256([]byte(name))
 
