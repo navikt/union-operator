@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"slices"
 
 	v1 "github.com/navikt/union-operator/api/v1"
 	"github.com/navikt/union-operator/internal/types"
@@ -17,7 +16,7 @@ func EnsureServicePerimeter(ctx context.Context, unionEnv *types.UnionEnv) error
 	var errs []error
 	for _, sa := range unionEnv.ServiceAccounts {
 		for _, api := range sa.PrivateGoogleAPIs {
-			err := ensureEgressPolicy(ctx, unionEnv.GoogleServiceAccountEmail(sa.Name), api)
+			err := ensureEgressPolicy(ctx, unionEnv, sa.Name, api)
 			if err != nil {
 				errs = append(errs, err)
 			}
@@ -48,7 +47,7 @@ func CleanupUnusedEgressPolicies(ctx context.Context, utsas []v1.UnionServiceAcc
 	return nil
 }
 
-func ensureEgressPolicy(ctx context.Context, sa string, api v1.GoogleAPI) error {
+func ensureEgressPolicy(ctx context.Context, unionEnv *types.UnionEnv, sa string, api v1.GoogleAPI) error {
 	accesscontextmanagerService, err := accesscontextmanager.NewService(ctx)
 	if err != nil {
 		return err
@@ -59,22 +58,40 @@ func ensureEgressPolicy(ctx context.Context, sa string, api v1.GoogleAPI) error 
 		return err
 	}
 
-	if egressPolicyExists(servicePerimeter, sa) {
-		return nil
-	}
+	serviceAccountEmail := unionEnv.GoogleServiceAccountEmail(sa)
 
-	perimeterUpdateRequest := accesscontextmanagerService.AccessPolicies.ServicePerimeters.Patch(servicePerimeterFQN, &accesscontextmanager.ServicePerimeter{
-		Status: &accesscontextmanager.ServicePerimeterConfig{
-			EgressPolicies: append(servicePerimeter.Status.EgressPolicies, &accesscontextmanager.EgressPolicy{
-				Title: sa,
+	// if egressPolicyExists(servicePerimeter, sa) {
+	// 	return nil
+	// }
+
+
+// dataplattform-development-dataplattform-biguery-googleapis-com
+
+	var egressPolicies []*accesscontextmanager.EgressPolicy
+
+	if egressPolicyExists(servicePerimeter, unionEnv.Project, unionEnv.Domain, sa, api) {
+		for _, ep := range servicePerimeter.Status.EgressPolicies {
+			if ep.Title == api.EgressPolicyName(unionEnv.Project, unionEnv.Domain, sa) {
+				ep.EgressFrom.Identities = []string{fmt.Sprintf("serviceAccount:%s", serviceAccountEmail)}
+				for _, identity := range api.ImpersonatedAccounts {
+					ep.EgressFrom.Identities = append(ep.EgressFrom.Identities, fmt.Sprintf("serviceAccount:%s", identity))
+				}
+			}
+	
+			egressPolicies = append(egressPolicies, ep)
+		}
+	} else {
+		egressPolicies = servicePerimeter.Status.EgressPolicies
+		egressPolicies = append(egressPolicies, &accesscontextmanager.EgressPolicy{
+				Title: api.EgressPolicyName(unionEnv.Project, unionEnv.Domain, sa),
 				EgressFrom: &accesscontextmanager.EgressFrom{
-					Identities: []string{fmt.Sprintf("serviceAccount:%s", sa)},
+					Identities: []string{fmt.Sprintf("serviceAccount:%s", serviceAccountEmail)},
 				},
 				EgressTo: &accesscontextmanager.EgressTo{
 					Resources: []string{fmt.Sprintf("projects/%d", api.ProjectNumber)},
 					Operations: []*accesscontextmanager.ApiOperation{
 						{
-							ServiceName: api.Name,
+							ServiceName: api.ServiceName,
 							MethodSelectors: []*accesscontextmanager.MethodSelector{
 								{
 									Method: "*",
@@ -83,7 +100,14 @@ func ensureEgressPolicy(ctx context.Context, sa string, api v1.GoogleAPI) error 
 						},
 					},
 				},
-			}),
+			},
+		)	
+	}
+
+
+	perimeterUpdateRequest := accesscontextmanagerService.AccessPolicies.ServicePerimeters.Patch(servicePerimeterFQN, &accesscontextmanager.ServicePerimeter{
+		Status: &accesscontextmanager.ServicePerimeterConfig{
+			EgressPolicies: egressPolicies,
 		},
 	})
 
@@ -92,9 +116,9 @@ func ensureEgressPolicy(ctx context.Context, sa string, api v1.GoogleAPI) error 
 	return err
 }
 
-func egressPolicyExists(servicePerimeter *accesscontextmanager.ServicePerimeter, sa string) bool {
+func egressPolicyExists(servicePerimeter *accesscontextmanager.ServicePerimeter, project, domain, sa string, api v1.GoogleAPI) bool {
 	for _, p := range servicePerimeter.Status.EgressPolicies {
-		if slices.Contains(p.EgressFrom.Identities, fmt.Sprintf("serviceAccount:%s", sa)) {
+		if p.Title == api.EgressPolicyName(project, domain, sa) {
 			return true
 		}
 	}
