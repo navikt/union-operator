@@ -26,7 +26,26 @@ func EnsureServicePerimeter(ctx context.Context, unionEnv *types.UnionEnv) error
 	return errors.Join(errs...)
 }
 
-func CleanupUnusedEgressPolicies(ctx context.Context) error {
+func CleanupUnusedEgressPolicies(ctx context.Context, utsas []v1.UnionServiceAccount) error {
+	//	policies := make(map[string]bool)
+	//	for _, utsa := range utsas {
+	//		if len(utsa.PrivateGoogleAPIs) < 0 {
+	//			policies[utsa.Name] = true
+	//		}
+	//
+	//	}
+	//
+	//	accesscontextmanagerService, err := accesscontextmanager.NewService(ctx)
+	//	if err != nil {
+	//		return err
+	//	}
+	//
+	//	servicePerimeter, err := accesscontextmanagerService.AccessPolicies.ServicePerimeters.Get(servicePerimeterFQN).Do()
+	//	if err != nil {
+	//		return err
+	//	}
+
+	return nil
 }
 
 func ensureEgressPolicy(ctx context.Context, sa string, api v1.GoogleAPI) error {
@@ -76,7 +95,6 @@ func ensureEgressPolicy(ctx context.Context, sa string, api v1.GoogleAPI) error 
 func egressPolicyExists(servicePerimeter *accesscontextmanager.ServicePerimeter, sa string) bool {
 	for _, p := range servicePerimeter.Status.EgressPolicies {
 		if slices.Contains(p.EgressFrom.Identities, fmt.Sprintf("serviceAccount:%s", sa)) {
-			fmt.Println("found existsing rule")
 			return true
 		}
 	}
