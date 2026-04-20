@@ -47,6 +47,8 @@ type UnionServiceAccount struct {
 	ExternalAllowlist []Host `json:"externalAllowlist,omitempty"`
 	// +optional
 	InternalAllowlist []Host `json:"internalAllowlist,omitempty"`
+	// +optional
+	PrivateGoogleAPIs []GoogleAPI `json:"privateGoogleAPIs,omitempty"`
 }
 
 type Host struct {
@@ -58,6 +60,11 @@ type Host struct {
 
 func (a Host) Name() string {
 	return strings.ReplaceAll(a.Host, ".", "-")
+}
+
+type GoogleAPI struct {
+	Name          string `json:"name"`
+	ProjectNumber int    `json:"projectNumber"`
 }
 
 // UnionTeamServiceAccountsStatus defines the observed state of UnionTeamServiceAccounts.

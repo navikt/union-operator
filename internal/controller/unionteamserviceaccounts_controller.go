@@ -27,11 +27,15 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	datanavnov1 "github.com/navikt/union-operator/api/v1"
+	"github.com/navikt/union-operator/internal/googleapis"
 	"github.com/navikt/union-operator/internal/istio"
 	uniontypes "github.com/navikt/union-operator/internal/types"
 )
 
-const unionFinalizer = "data.nav.no/finalizer"
+const (
+	GCPProjectName = "nav-data-union-restricted-dev"
+	unionFinalizer = "data.nav.no/finalizer"
+)
 
 // UnionTeamServiceAccountsReconciler reconciles a UnionTeamServiceAccounts object
 type UnionTeamServiceAccountsReconciler struct {
@@ -78,6 +82,7 @@ func (r *UnionTeamServiceAccountsReconciler) Reconcile(ctx context.Context, req 
 		Project:         utsa.Spec.Project,
 		Domain:          utsa.Spec.Domain,
 		ServiceAccounts: utsa.Spec.ServiceAccounts,
+		GCPProjectName:  GCPProjectName,
 	}
 
 	// Handle deletion: clean up all cross-namespace resources before allowing CR removal.
@@ -123,6 +128,10 @@ func (r *UnionTeamServiceAccountsReconciler) Reconcile(ctx context.Context, req 
 		return ctrl.Result{}, err
 	}
 	err = istioReconciler.CleanupUnusedHosts(ctx)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	err = googleapis.EnsureServicePerimeter(ctx, unionEnv)
 	if err != nil {
 		return ctrl.Result{}, err
 	}

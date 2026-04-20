@@ -22,7 +22,6 @@ import (
 const (
 	UnionProjectLabel      = "union.nav.no/project"
 	UnionDomainLabel       = "union.nav.no/domain"
-	GCPProjectName         = "nav-data-union-restricted-dev"
 	DataBucket             = "restricted-dev-data"
 	FastRegistrationBucket = "restricted-dev-fast-registration"
 )
@@ -117,7 +116,7 @@ func (r *UnionTeamServiceAccountsReconciler) createIAMPolicyMembers(ctx context.
 		Name:       fmt.Sprintf("%s-workload-identity-user", sa.Name),
 		Role:       "roles/iam.workloadIdentityUser",
 		Kind:       "IAMServiceAccount",
-		External:   fmt.Sprintf("projects/%s/serviceAccounts/%s@%s.iam.gserviceaccount.com", GCPProjectName, unionEnv.GoogleServiceAccountName(sa.Name), GCPProjectName),
+		External:   fmt.Sprintf("projects/%s/serviceAccounts/%s", unionEnv.GCPProjectName, unionEnv.GoogleServiceAccountEmail(sa.Name)),
 		APIVersion: "iam.cnrm.cloud.google.com/v1beta1",
 		Member:     fmt.Sprintf("%s.svc.id.goog[%s/%s]", GCPProjectName, unionEnv.Namespace(), sa.Name),
 	}
@@ -128,7 +127,7 @@ func (r *UnionTeamServiceAccountsReconciler) createIAMPolicyMembers(ctx context.
 		Kind:       "StorageBucket",
 		External:   DataBucket,
 		APIVersion: "storage.cnrm.cloud.google.com/v1beta1",
-		Member:     fmt.Sprintf("%s@%s.iam.gserviceaccount.com", unionEnv.GoogleServiceAccountName(sa.Name), GCPProjectName),
+		Member:     unionEnv.GoogleServiceAccountEmail(sa.Name),
 	}
 	fastRegistrationBucket := IAMPolicyMemberOpts{
 		Name:       fmt.Sprintf("%s-union-fast-registration-bucket-viewer", sa.Name),
@@ -136,7 +135,7 @@ func (r *UnionTeamServiceAccountsReconciler) createIAMPolicyMembers(ctx context.
 		Kind:       "StorageBucket",
 		External:   FastRegistrationBucket,
 		APIVersion: "storage.cnrm.cloud.google.com/v1beta1",
-		Member:     fmt.Sprintf("%s@%s.iam.gserviceaccount.com", unionEnv.GoogleServiceAccountName(sa.Name), GCPProjectName),
+		Member:     unionEnv.GoogleServiceAccountEmail(sa.Name),
 	}
 
 	policyMembers := []IAMPolicyMemberOpts{
