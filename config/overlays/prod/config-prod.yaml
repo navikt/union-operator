@@ -1,0 +1,3 @@
+UNION_DATAPLANE_PROJECT: "nav-data-union-restricted-prod"
+UNION_FAST_REGISTRATION_BUCKET: "restricted-prod-fast-registration"
+UNION_DATA_BUCKET: "restricted-prod-data"

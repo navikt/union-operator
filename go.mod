@@ -23,6 +23,7 @@ require (
 	github.com/googleapis/enterprise-certificate-proxy v0.3.14 // indirect
 	github.com/googleapis/gax-go/v2 v2.21.0 // indirect
 	golang.org/x/crypto v0.49.0 // indirect
+	mvdan.cc/gofumpt v0.9.2 // indirect
 )
 
 require (

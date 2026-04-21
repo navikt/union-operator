@@ -1,0 +1,10 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../base/manager
+  - ../../base/default
+configMapGenerator:
+- files:
+  - config.yaml=config-prod.yaml
+  name: manager-config
+  namespace: union-operator-system

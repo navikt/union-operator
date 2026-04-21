@@ -8,6 +8,12 @@ import (
 	datanavnov1 "github.com/navikt/union-operator/api/v1"
 )
 
+type UnionDataplaneConfig struct {
+	GCPProjectName         string `yaml:"gcpProjectName"`
+	FastRegistrationBucket string `yaml:"fastRegistrationBucket"`
+	DataBucket             string `yaml:"dataBucket"`
+}
+
 type OnpremHostMap map[string]OnpremHost
 
 type OnpremHost struct {
