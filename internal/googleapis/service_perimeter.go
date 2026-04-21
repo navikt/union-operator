@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	v1 "github.com/navikt/union-operator/api/v1"
 	"github.com/navikt/union-operator/internal/types"
@@ -70,7 +71,7 @@ func ensureEgressPolicy(ctx context.Context, sa types.ServiceAccount, api v1.Goo
 
 	if egressPolicyExists(servicePerimeter, sa, api) {
 		for _, ep := range servicePerimeter.Status.EgressPolicies {
-			if ep.Title == api.EgressPolicyName(sa.Project, sa.Domain, sa.Name) {
+			if ep.Title == egressPolicyName(sa, api) {
 				ep.EgressFrom.Identities = []string{fmt.Sprintf("serviceAccount:%s", serviceAccountEmail)}
 				for _, identity := range api.ImpersonatedAccounts {
 					ep.EgressFrom.Identities = append(ep.EgressFrom.Identities, fmt.Sprintf("serviceAccount:%s", identity))
@@ -82,7 +83,7 @@ func ensureEgressPolicy(ctx context.Context, sa types.ServiceAccount, api v1.Goo
 	} else {
 		egressPolicies = servicePerimeter.Status.EgressPolicies
 		egressPolicies = append(egressPolicies, &accesscontextmanager.EgressPolicy{
-			Title: api.EgressPolicyName(sa.Project, sa.Domain, sa.Name),
+			Title: egressPolicyName(sa, api),
 			EgressFrom: &accesscontextmanager.EgressFrom{
 				Identities: []string{fmt.Sprintf("serviceAccount:%s", serviceAccountEmail)},
 			},
@@ -116,9 +117,15 @@ func ensureEgressPolicy(ctx context.Context, sa types.ServiceAccount, api v1.Goo
 
 func egressPolicyExists(servicePerimeter *accesscontextmanager.ServicePerimeter, sa types.ServiceAccount, api v1.GoogleAPI) bool {
 	for _, p := range servicePerimeter.Status.EgressPolicies {
-		if p.Title == api.EgressPolicyName(sa.Project, sa.Domain, sa.Name) {
+		if p.Title == egressPolicyName(sa, api) {
 			return true
 		}
 	}
 	return false
+}
+
+func egressPolicyName(sa types.ServiceAccount, api v1.GoogleAPI) string {
+	return fmt.Sprintf("%s-%s-%s-%s-%d",
+		sa.Project, sa.Domain[:3], sa.Name,
+		strings.Split(api.ServiceName, ".")[0], api.ProjectNumber)
 }

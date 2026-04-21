@@ -17,7 +17,6 @@ limitations under the License.
 package v1
 
 import (
-	"fmt"
 	"strings"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -67,10 +66,6 @@ type GoogleAPI struct {
 	ServiceName          string   `json:"serviceName"`
 	ProjectNumber        int      `json:"projectNumber"`
 	ImpersonatedAccounts []string `json:"impersonatedAccounts,omitempty"`
-}
-
-func (a GoogleAPI) EgressPolicyName(project, domain, sa string) string {
-	return fmt.Sprintf("%s-%s-%s-%s-%d", project, domain[:3], sa, strings.Split(a.ServiceName, ".")[0], a.ProjectNumber)
 }
 
 // UnionTeamServiceAccountsStatus defines the observed state of UnionTeamServiceAccounts.
