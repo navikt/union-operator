@@ -84,13 +84,9 @@ func (r *UnionTeamServiceAccountsReconciler) Reconcile(ctx context.Context, req 
 		GCPProjectName: GCPProjectName,
 	}
 
-	var serviceAccounts []uniontypes.ServiceAccount
+	serviceAccounts := make([]uniontypes.ServiceAccount, 0, len(utsa.Spec.ServiceAccounts))
 	for _, sa := range utsa.Spec.ServiceAccounts {
-		serviceAccounts = append(serviceAccounts, uniontypes.ServiceAccount{
-			UnionServiceAccount: sa,
-			UnionEnv:            *unionEnv,
-		})
-
+		serviceAccounts = append(serviceAccounts, unionEnv.ServiceAccount(sa))
 	}
 
 	// Handle deletion: clean up all cross-namespace resources before allowing CR removal.

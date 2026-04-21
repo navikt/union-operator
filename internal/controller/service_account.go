@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"maps"
 
-	datanavnov1 "github.com/navikt/union-operator/api/v1"
 	v1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -57,7 +56,7 @@ func (r *UnionTeamServiceAccountsReconciler) cleanupAllResources(ctx context.Con
 
 	var errs []error
 	for _, sa := range existing.Items {
-		if err := r.cleanupServiceAccount(ctx, uniontypes.ServiceAccount{UnionServiceAccount: datanavnov1.UnionServiceAccount{Name: sa.Name}, UnionEnv: *unionEnv}); err != nil {
+		if err := r.cleanupServiceAccount(ctx, unionEnv.ServiceAccountByName(sa.Name)); err != nil {
 			log.Error(err, "Failed to cleanup service account resources during finalizer", "name", sa.Name)
 			errs = append(errs, err)
 			continue
@@ -134,7 +133,7 @@ func (r *UnionTeamServiceAccountsReconciler) createIAMPolicyMembers(ctx context.
 	}
 
 	for _, member := range policyMembers {
-		if err := r.createIAMPolicyMember(ctx, &sa.UnionEnv, member); err != nil {
+		if err := r.createIAMPolicyMember(ctx, sa.UnionEnv, member); err != nil {
 			return err
 		}
 	}
@@ -214,8 +213,8 @@ func (r *UnionTeamServiceAccountsReconciler) reconcileIAMServiceAccount(ctx cont
 			return err
 		}
 		// Create new IAMServiceAccount.
-		setUnionMetadata(iamServiceAccount, &sa.UnionEnv, map[string]string{
-			"cnrm.cloud.google.com/project-id": GCPProjectName,
+		setUnionMetadata(iamServiceAccount, sa.UnionEnv, map[string]string{
+			"cnrm.cloud.google.com/project-id": sa.GCPProjectName,
 		})
 		iamServiceAccount.Spec.DisplayName = fmt.Sprintf("Union service account %s for domain %s in project %s", sa.Name, sa.Domain, sa.Project)
 		if err := r.Create(ctx, iamServiceAccount); err != nil {
@@ -228,8 +227,8 @@ func (r *UnionTeamServiceAccountsReconciler) reconcileIAMServiceAccount(ctx cont
 
 	// Patch labels/annotations on existing IAMServiceAccount (avoids touching immutable spec fields).
 	patch := client.MergeFrom(iamServiceAccount.DeepCopy())
-	setUnionMetadata(iamServiceAccount, &sa.UnionEnv, map[string]string{
-		"cnrm.cloud.google.com/project-id": GCPProjectName,
+	setUnionMetadata(iamServiceAccount, sa.UnionEnv, map[string]string{
+		"cnrm.cloud.google.com/project-id": sa.GCPProjectName,
 	})
 	if err := r.Patch(ctx, iamServiceAccount, patch); err != nil {
 		log.Error(err, "Failed to patch IAMServiceAccount", "name", sa.GoogleServiceAccountName())
@@ -249,7 +248,7 @@ func (r *UnionTeamServiceAccountsReconciler) reconcileServiceAccount(ctx context
 	}
 
 	result, err := controllerutil.CreateOrUpdate(ctx, r.Client, k8sSa, func() error {
-		setUnionMetadata(k8sSa, &sa.UnionEnv, map[string]string{
+		setUnionMetadata(k8sSa, sa.UnionEnv, map[string]string{
 			"iam.gke.io/gcp-service-account": sa.GoogleServiceAccountEmail(),
 		})
 		return nil
@@ -284,10 +283,7 @@ func (r *UnionTeamServiceAccountsReconciler) cleanupRemovedServiceAccounts(
 	var errs []error
 	for _, k8sSa := range existing.Items {
 		if findByField(serviceAccounts, k8sSa.Name, func(s uniontypes.ServiceAccount) string { return s.Name }) == nil {
-			if err := r.cleanupServiceAccount(ctx, uniontypes.ServiceAccount{
-				UnionServiceAccount: datanavnov1.UnionServiceAccount{Name: k8sSa.Name},
-				UnionEnv:            *unionEnv,
-			}); err != nil {
+			if err := r.cleanupServiceAccount(ctx, unionEnv.ServiceAccountByName(k8sSa.Name)); err != nil {
 				log.Error(err, "Failed to cleanup service account resources", "name", k8sSa.Name)
 				errs = append(errs, err)
 				continue

@@ -18,7 +18,7 @@ type OnpremHost struct {
 
 type ServiceAccount struct {
 	datanavnov1.UnionServiceAccount
-	UnionEnv
+	*UnionEnv
 }
 
 type UnionEnv struct {
@@ -29,6 +29,14 @@ type UnionEnv struct {
 
 func (u *UnionEnv) Namespace() string {
 	return fmt.Sprintf("%s-%s", u.Project, u.Domain)
+}
+
+func (u *UnionEnv) ServiceAccount(sa datanavnov1.UnionServiceAccount) ServiceAccount {
+	return ServiceAccount{UnionServiceAccount: sa, UnionEnv: u}
+}
+
+func (u *UnionEnv) ServiceAccountByName(name string) ServiceAccount {
+	return u.ServiceAccount(datanavnov1.UnionServiceAccount{Name: name})
 }
 
 func (s *ServiceAccount) GoogleServiceAccountName() string {
