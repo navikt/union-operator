@@ -4,9 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 
 	iam "github.com/nais/liberator/pkg/apis/iam.cnrm.cloud.google.com/v1beta1"
-	datanavnov1 "github.com/navikt/union-operator/api/v1"
 	uniontypes "github.com/navikt/union-operator/internal/types"
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -15,7 +15,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-// cleanupAllResources deletes all ServiceAccounts, IAMServiceAccounts, and
+// CleanupAllResources deletes all ServiceAccounts, IAMServiceAccounts, and
 // IAMPolicyMembers managed by this controller for the given UnionEnv.
 // This is called by the finalizer when the CR is being deleted.
 func (r *Reconciler) CleanupAllResources(ctx context.Context, unionEnv *uniontypes.UnionEnv) error {
@@ -33,7 +33,7 @@ func (r *Reconciler) CleanupAllResources(ctx context.Context, unionEnv *uniontyp
 
 	var errs []error
 	for _, sa := range existing.Items {
-		if err := r.cleanupServiceAccount(ctx, unionEnv, sa.Name); err != nil {
+		if err := r.cleanupServiceAccount(ctx, unionEnv.ServiceAccountByName(sa.Name)); err != nil {
 			log.Error(err, "Failed to cleanup service account resources during finalizer", "name", sa.Name)
 			errs = append(errs, err)
 			continue
@@ -51,17 +51,16 @@ func (r *Reconciler) CleanupAllResources(ctx context.Context, unionEnv *uniontyp
 }
 
 // cleanupServiceAccount deletes the IAMServiceAccount and all associated
-// IAMPolicyMembers for a given service account name.
+// IAMPolicyMembers for a given service account.
 func (r *Reconciler) cleanupServiceAccount(
 	ctx context.Context,
-	unionEnv *uniontypes.UnionEnv,
-	serviceAccountName string,
+	sa uniontypes.ServiceAccount,
 ) error {
 	log := logf.FromContext(ctx)
 	var errs []error
 
-	if err := r.cleanupIAMPolicyMembers(ctx, unionEnv, serviceAccountName); err != nil {
-		log.Error(err, "Failed to cleanup IAMPolicyMembers", "name", serviceAccountName)
+	if err := r.cleanupIAMPolicyMembers(ctx, sa); err != nil {
+		log.Error(err, "Failed to cleanup IAMPolicyMembers", "name", sa.Name)
 		errs = append(errs, err)
 	}
 
@@ -69,23 +68,23 @@ func (r *Reconciler) cleanupServiceAccount(
 	err := r.Get(
 		ctx,
 		types.NamespacedName{
-			Name:      unionEnv.GoogleServiceAccountName(serviceAccountName),
-			Namespace: unionEnv.Namespace(),
+			Name:      sa.GoogleServiceAccountName(),
+			Namespace: sa.Namespace(),
 		},
 		googleServiceAccount,
 	)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
-			log.Info("IAMServiceAccount not found, skipping deletion", "name", serviceAccountName, "project", unionEnv.Project, "domain", unionEnv.Domain)
+			log.Info("IAMServiceAccount not found, skipping deletion", "name", sa.Name, "project", sa.Project, "domain", sa.Domain)
 			return errors.Join(errs...)
 		}
-		log.Error(err, "Failed to get IAMServiceAccount for deletion", "name", serviceAccountName)
+		log.Error(err, "Failed to get IAMServiceAccount for deletion", "name", sa.Name)
 		errs = append(errs, err)
 		return errors.Join(errs...)
 	}
 
 	if err := r.Delete(ctx, googleServiceAccount); err != nil {
-		log.Error(err, "Failed to delete IAMServiceAccount", "name", serviceAccountName)
+		log.Error(err, "Failed to delete IAMServiceAccount", "name", sa.Name)
 		errs = append(errs, err)
 	}
 
@@ -96,15 +95,14 @@ func (r *Reconciler) cleanupServiceAccount(
 // (workload identity, data bucket, fast registration bucket) for a service account.
 func (r *Reconciler) cleanupIAMPolicyMembers(
 	ctx context.Context,
-	unionEnv *uniontypes.UnionEnv,
-	serviceAccountName string,
+	sa uniontypes.ServiceAccount,
 ) error {
 	log := logf.FromContext(ctx)
 
 	policyMemberNames := []string{
-		fmt.Sprintf("%s-workload-identity-user", serviceAccountName),
-		fmt.Sprintf("%s-union-data-bucket-object-admin", serviceAccountName),
-		fmt.Sprintf("%s-union-fast-registration-bucket-viewer", serviceAccountName),
+		fmt.Sprintf("%s-workload-identity-user", sa.Name),
+		fmt.Sprintf("%s-union-data-bucket-object-admin", sa.Name),
+		fmt.Sprintf("%s-union-fast-registration-bucket-viewer", sa.Name),
 	}
 
 	var errs []error
@@ -112,7 +110,7 @@ func (r *Reconciler) cleanupIAMPolicyMembers(
 		existing := &iam.IAMPolicyMember{}
 		err := r.Get(ctx, types.NamespacedName{
 			Name:      name,
-			Namespace: unionEnv.Namespace(),
+			Namespace: sa.Namespace(),
 		}, existing)
 		if err != nil {
 			if apierrors.IsNotFound(err) {
@@ -134,26 +132,41 @@ func (r *Reconciler) cleanupIAMPolicyMembers(
 	return errors.Join(errs...)
 }
 
+// cleanupRemovedServiceAccounts deletes ServiceAccounts, IAMServiceAccounts and
+// IAMPolicyMembers for service accounts that are no longer present in the spec.
 func (r *Reconciler) cleanupRemovedServiceAccounts(
 	ctx context.Context,
 	unionEnv *uniontypes.UnionEnv,
-	existingServiceAccounts []v1.ServiceAccount,
+	serviceAccounts []uniontypes.ServiceAccount,
 ) error {
 	log := logf.FromContext(ctx)
-	var errs []error
-	for _, existing := range existingServiceAccounts {
-		if findByField(unionEnv.ServiceAccounts, existing.Name, func(sa datanavnov1.UnionServiceAccount) string { return sa.Name }) == nil {
-			if err := r.cleanupServiceAccount(ctx, unionEnv, existing.Name); err != nil {
-				log.Error(err, "Failed to cleanup service account resources", "name", existing.Name)
-				errs = append(errs, err)
-				continue
-			}
+	existing := &v1.ServiceAccountList{}
 
-			if err := r.Delete(ctx, &existing); err != nil {
-				if !apierrors.IsNotFound(err) {
-					log.Error(err, "Failed to delete Kubernetes ServiceAccount", "name", existing.Name)
-					errs = append(errs, err)
-				}
+	err := r.List(ctx, existing, client.MatchingLabels{
+		UnionProjectLabel: unionEnv.Project,
+		UnionDomainLabel:  unionEnv.Domain,
+	})
+	if err != nil {
+		log.Error(err, "Failed to list ServiceAccounts", "project", unionEnv.Project, "domain", unionEnv.Domain)
+		return err
+	}
+
+	var errs []error
+	for _, k8sSa := range existing.Items {
+		if slices.ContainsFunc(serviceAccounts, func(s uniontypes.ServiceAccount) bool { return s.Name == k8sSa.Name }) {
+			continue
+		}
+
+		if err := r.cleanupServiceAccount(ctx, unionEnv.ServiceAccountByName(k8sSa.Name)); err != nil {
+			log.Error(err, "Failed to cleanup service account resources", "name", k8sSa.Name)
+			errs = append(errs, err)
+			continue
+		}
+
+		if err := r.Delete(ctx, &k8sSa); err != nil {
+			if !apierrors.IsNotFound(err) {
+				log.Error(err, "Failed to delete Kubernetes ServiceAccount", "name", k8sSa.Name)
+				errs = append(errs, err)
 			}
 		}
 	}
