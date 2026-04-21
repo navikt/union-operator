@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"slices"
 
 	v1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -282,7 +283,7 @@ func (r *UnionTeamServiceAccountsReconciler) cleanupRemovedServiceAccounts(
 
 	var errs []error
 	for _, k8sSa := range existing.Items {
-		if findByField(serviceAccounts, k8sSa.Name, func(s uniontypes.ServiceAccount) string { return s.Name }) == nil {
+		if !slices.ContainsFunc(serviceAccounts, func(s uniontypes.ServiceAccount) bool { return s.Name == k8sSa.Name }) {
 			if err := r.cleanupServiceAccount(ctx, unionEnv.ServiceAccountByName(k8sSa.Name)); err != nil {
 				log.Error(err, "Failed to cleanup service account resources", "name", k8sSa.Name)
 				errs = append(errs, err)
@@ -380,16 +381,6 @@ func (r *UnionTeamServiceAccountsReconciler) cleanupIAMPolicyMembers(
 	}
 
 	return errors.Join(errs...)
-}
-
-func findByField[T uniontypes.ServiceAccount | v1.ServiceAccount](serviceAccounts []T, name string, fieldFunc func(T) string) *T {
-	for _, sa := range serviceAccounts {
-		if fieldFunc(sa) == name {
-			return &sa
-		}
-	}
-
-	return nil
 }
 
 // setUnionMetadata ensures the standard union labels and the provided annotations
