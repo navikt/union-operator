@@ -12,11 +12,11 @@ import (
 
 const servicePerimeterFQN = "accessPolicies/756121543316/servicePerimeters/dataplattform_perimeter_dev"
 
-func EnsureServicePerimeter(ctx context.Context, unionEnv *types.UnionEnv) error {
+func EnsureServicePerimeter(ctx context.Context, serviceAccounts []types.ServiceAccount) error {
 	var errs []error
-	for _, sa := range unionEnv.ServiceAccounts {
+	for _, sa := range serviceAccounts {
 		for _, api := range sa.PrivateGoogleAPIs {
-			err := ensureEgressPolicy(ctx, unionEnv, sa.Name, api)
+			err := ensureEgressPolicy(ctx, sa, api)
 			if err != nil {
 				errs = append(errs, err)
 			}
@@ -47,7 +47,7 @@ func CleanupUnusedEgressPolicies(ctx context.Context, utsas []v1.UnionServiceAcc
 	return nil
 }
 
-func ensureEgressPolicy(ctx context.Context, unionEnv *types.UnionEnv, sa string, api v1.GoogleAPI) error {
+func ensureEgressPolicy(ctx context.Context, sa types.ServiceAccount, api v1.GoogleAPI) error {
 	accesscontextmanagerService, err := accesscontextmanager.NewService(ctx)
 	if err != nil {
 		return err
@@ -58,52 +58,50 @@ func ensureEgressPolicy(ctx context.Context, unionEnv *types.UnionEnv, sa string
 		return err
 	}
 
-	serviceAccountEmail := unionEnv.GoogleServiceAccountEmail(sa)
+	serviceAccountEmail := sa.GoogleServiceAccountEmail()
 
 	// if egressPolicyExists(servicePerimeter, sa) {
 	// 	return nil
 	// }
 
-
-// dataplattform-development-dataplattform-biguery-googleapis-com
+	// dataplattform-development-dataplattform-biguery-googleapis-com
 
 	var egressPolicies []*accesscontextmanager.EgressPolicy
 
-	if egressPolicyExists(servicePerimeter, unionEnv.Project, unionEnv.Domain, sa, api) {
+	if egressPolicyExists(servicePerimeter, sa, api) {
 		for _, ep := range servicePerimeter.Status.EgressPolicies {
-			if ep.Title == api.EgressPolicyName(unionEnv.Project, unionEnv.Domain, sa) {
+			if ep.Title == api.EgressPolicyName(sa.Project, sa.Domain, sa.Name) {
 				ep.EgressFrom.Identities = []string{fmt.Sprintf("serviceAccount:%s", serviceAccountEmail)}
 				for _, identity := range api.ImpersonatedAccounts {
 					ep.EgressFrom.Identities = append(ep.EgressFrom.Identities, fmt.Sprintf("serviceAccount:%s", identity))
 				}
 			}
-	
+
 			egressPolicies = append(egressPolicies, ep)
 		}
 	} else {
 		egressPolicies = servicePerimeter.Status.EgressPolicies
 		egressPolicies = append(egressPolicies, &accesscontextmanager.EgressPolicy{
-				Title: api.EgressPolicyName(unionEnv.Project, unionEnv.Domain, sa),
-				EgressFrom: &accesscontextmanager.EgressFrom{
-					Identities: []string{fmt.Sprintf("serviceAccount:%s", serviceAccountEmail)},
-				},
-				EgressTo: &accesscontextmanager.EgressTo{
-					Resources: []string{fmt.Sprintf("projects/%d", api.ProjectNumber)},
-					Operations: []*accesscontextmanager.ApiOperation{
-						{
-							ServiceName: api.ServiceName,
-							MethodSelectors: []*accesscontextmanager.MethodSelector{
-								{
-									Method: "*",
-								},
+			Title: api.EgressPolicyName(sa.Project, sa.Domain, sa.Name),
+			EgressFrom: &accesscontextmanager.EgressFrom{
+				Identities: []string{fmt.Sprintf("serviceAccount:%s", serviceAccountEmail)},
+			},
+			EgressTo: &accesscontextmanager.EgressTo{
+				Resources: []string{fmt.Sprintf("projects/%d", api.ProjectNumber)},
+				Operations: []*accesscontextmanager.ApiOperation{
+					{
+						ServiceName: api.ServiceName,
+						MethodSelectors: []*accesscontextmanager.MethodSelector{
+							{
+								Method: "*",
 							},
 						},
 					},
 				},
 			},
-		)	
+		},
+		)
 	}
-
 
 	perimeterUpdateRequest := accesscontextmanagerService.AccessPolicies.ServicePerimeters.Patch(servicePerimeterFQN, &accesscontextmanager.ServicePerimeter{
 		Status: &accesscontextmanager.ServicePerimeterConfig{
@@ -116,9 +114,9 @@ func ensureEgressPolicy(ctx context.Context, unionEnv *types.UnionEnv, sa string
 	return err
 }
 
-func egressPolicyExists(servicePerimeter *accesscontextmanager.ServicePerimeter, project, domain, sa string, api v1.GoogleAPI) bool {
+func egressPolicyExists(servicePerimeter *accesscontextmanager.ServicePerimeter, sa types.ServiceAccount, api v1.GoogleAPI) bool {
 	for _, p := range servicePerimeter.Status.EgressPolicies {
-		if p.Title == api.EgressPolicyName(project, domain, sa) {
+		if p.Title == api.EgressPolicyName(sa.Project, sa.Domain, sa.Name) {
 			return true
 		}
 	}

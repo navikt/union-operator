@@ -79,10 +79,18 @@ func (r *UnionTeamServiceAccountsReconciler) Reconcile(ctx context.Context, req 
 	}
 
 	unionEnv := &uniontypes.UnionEnv{
-		Project:         utsa.Spec.Project,
-		Domain:          utsa.Spec.Domain,
-		ServiceAccounts: utsa.Spec.ServiceAccounts,
-		GCPProjectName:  GCPProjectName,
+		Project:        utsa.Spec.Project,
+		Domain:         utsa.Spec.Domain,
+		GCPProjectName: GCPProjectName,
+	}
+
+	var serviceAccounts []uniontypes.ServiceAccount
+	for _, sa := range utsa.Spec.ServiceAccounts {
+		serviceAccounts = append(serviceAccounts, uniontypes.ServiceAccount{
+			UnionServiceAccount: sa,
+			UnionEnv:            *unionEnv,
+		})
+
 	}
 
 	// Handle deletion: clean up all cross-namespace resources before allowing CR removal.
@@ -116,14 +124,14 @@ func (r *UnionTeamServiceAccountsReconciler) Reconcile(ctx context.Context, req 
 	}
 
 	// Normal reconciliation.
-	if err := r.updateServiceAccountsForDomain(ctx, unionEnv); err != nil {
+	if err := r.updateServiceAccountsForDomain(ctx, serviceAccounts, unionEnv); err != nil {
 		return ctrl.Result{}, err
 	}
-	err = istioReconciler.EnsureExternalHosts(ctx, unionEnv)
+	err = istioReconciler.EnsureExternalHosts(ctx, serviceAccounts)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
-	err = istioReconciler.EnsureAuthorizationPolicies(ctx, unionEnv)
+	err = istioReconciler.EnsureAuthorizationPolicies(ctx, serviceAccounts)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -131,7 +139,7 @@ func (r *UnionTeamServiceAccountsReconciler) Reconcile(ctx context.Context, req 
 	if err != nil {
 		return ctrl.Result{}, err
 	}
-	err = googleapis.EnsureServicePerimeter(ctx, unionEnv)
+	err = googleapis.EnsureServicePerimeter(ctx, serviceAccounts)
 	if err != nil {
 		return ctrl.Result{}, err
 	}

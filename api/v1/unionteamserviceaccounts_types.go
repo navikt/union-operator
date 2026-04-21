@@ -64,8 +64,8 @@ func (a Host) Name() string {
 }
 
 type GoogleAPI struct {
-	ServiceName          string `json:"serviceName"`
-	ProjectNumber int    `json:"projectNumber"`
+	ServiceName          string   `json:"serviceName"`
+	ProjectNumber        int      `json:"projectNumber"`
 	ImpersonatedAccounts []string `json:"impersonatedAccounts,omitempty"`
 }
 

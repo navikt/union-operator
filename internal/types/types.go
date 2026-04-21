@@ -16,25 +16,29 @@ type OnpremHost struct {
 	Protocol string   `json:"protocol"`
 }
 
+type ServiceAccount struct {
+	datanavnov1.UnionServiceAccount
+	UnionEnv
+}
+
 type UnionEnv struct {
-	Project         string
-	Domain          string
-	ServiceAccounts []datanavnov1.UnionServiceAccount
-	GCPProjectName  string
+	Project        string
+	Domain         string
+	GCPProjectName string
 }
 
 func (u *UnionEnv) Namespace() string {
 	return fmt.Sprintf("%s-%s", u.Project, u.Domain)
 }
 
-func (u *UnionEnv) GoogleServiceAccountName(serviceAccountName string) string {
-	name := fmt.Sprintf("%s-%s-%s", serviceAccountName, u.Domain, u.Project)
+func (s *ServiceAccount) GoogleServiceAccountName() string {
+	name := fmt.Sprintf("%s-%s-%s", s.Name, s.Domain, s.Project)
 	hash := sha256.Sum256([]byte(name))
 
 	prefixLength := min(23, len(name))
 	return fmt.Sprintf("%s-%s", name[:prefixLength], hex.EncodeToString(hash[:])[:5])
 }
 
-func (u *UnionEnv) GoogleServiceAccountEmail(serviceAccountName string) string {
-	return fmt.Sprintf("%s@%s.iam.gserviceaccount.com", u.GoogleServiceAccountName(serviceAccountName), u.GCPProjectName)
+func (s *ServiceAccount) GoogleServiceAccountEmail() string {
+	return fmt.Sprintf("%s@%s.iam.gserviceaccount.com", s.GoogleServiceAccountName(), s.GCPProjectName)
 }
