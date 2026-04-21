@@ -14,14 +14,14 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-func (r *Reconciler) ensureAuthorizationPolicyForHost(ctx context.Context, unionEnv *uniontypes.UnionEnv, serviceAccount string, host *datanavnov1.Host, protocol, hostTypeLabel string) error {
+func (r *Reconciler) ensureAuthorizationPolicyForHost(ctx context.Context, sa uniontypes.ServiceAccount, host *datanavnov1.Host, protocol, hostTypeLabel string) error {
 	_ = logf.FromContext(ctx)
 
 	apList := &istiosecurity.AuthorizationPolicyList{}
 	err := r.List(ctx, apList, inEgressNamespace(), client.MatchingLabels{
-		"project":         unionEnv.Project,
-		"domain":          unionEnv.Domain,
-		"service-account": serviceAccount,
+		"project":         sa.Project,
+		"domain":          sa.Domain,
+		"service-account": sa.Name,
 		"host":            host.Host,
 	})
 	if err != nil {
@@ -29,7 +29,7 @@ func (r *Reconciler) ensureAuthorizationPolicyForHost(ctx context.Context, union
 	}
 
 	if len(apList.Items) < 1 {
-		ap, err := newAuthorizationPolicy(unionEnv, serviceAccount, host, protocol, hostTypeLabel)
+		ap, err := newAuthorizationPolicy(sa, host, protocol, hostTypeLabel)
 		if err != nil {
 			return err
 		}
@@ -41,7 +41,7 @@ func (r *Reconciler) ensureAuthorizationPolicyForHost(ctx context.Context, union
 	return nil
 }
 
-func newAuthorizationPolicy(unionEnv *uniontypes.UnionEnv, serviceAccount string, host *datanavnov1.Host, protocol, hostTypeLabel string) (*istiosecurity.AuthorizationPolicy, error) {
+func newAuthorizationPolicy(sa uniontypes.ServiceAccount, host *datanavnov1.Host, protocol, hostTypeLabel string) (*istiosecurity.AuthorizationPolicy, error) {
 	var when []*istiosecuritymodels.Condition
 	var to []*istiosecuritymodels.Rule_To
 	switch strings.ToUpper(protocol) {
@@ -67,12 +67,12 @@ func newAuthorizationPolicy(unionEnv *uniontypes.UnionEnv, serviceAccount string
 
 	return &istiosecurity.AuthorizationPolicy{
 		ObjectMeta: v1.ObjectMeta{
-			Name:      fmt.Sprintf("%s-%s-%s-%s", unionEnv.Project, unionEnv.Domain, serviceAccount, host.Name()),
+			Name:      fmt.Sprintf("%s-%s-%s-%s", sa.Project, sa.Domain, sa.Name, host.Name()),
 			Namespace: EgressNamespace,
 			Labels: map[string]string{
-				"project":         unionEnv.Project,
-				"domain":          unionEnv.Domain,
-				"service-account": serviceAccount,
+				"project":         sa.Project,
+				"domain":          sa.Domain,
+				"service-account": sa.Name,
 				"host":            host.Host,
 				"host-type":       hostTypeLabel,
 			},
@@ -84,7 +84,7 @@ func newAuthorizationPolicy(unionEnv *uniontypes.UnionEnv, serviceAccount string
 					From: []*istiosecuritymodels.Rule_From{
 						{
 							Source: &istiosecuritymodels.Source{
-								Principals: []string{fmt.Sprintf("cluster.local/ns/%s/sa/%s", unionEnv.Namespace(), serviceAccount)},
+								Principals: []string{fmt.Sprintf("cluster.local/ns/%s/sa/%s", sa.Namespace(), sa.Name)},
 							},
 						},
 					},

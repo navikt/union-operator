@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	iam "github.com/nais/liberator/pkg/apis/iam.cnrm.cloud.google.com/v1beta1"
-	datanavnov1 "github.com/navikt/union-operator/api/v1"
 	uniontypes "github.com/navikt/union-operator/internal/types"
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -26,14 +25,14 @@ type IAMPolicyMemberOpts struct {
 	APIVersion string
 }
 
-func (r *Reconciler) createIAMPolicyMembers(ctx context.Context, unionEnv *uniontypes.UnionEnv, sa datanavnov1.UnionServiceAccount) error {
+func (r *Reconciler) createIAMPolicyMembers(ctx context.Context, sa uniontypes.ServiceAccount) error {
 	workloadIdentity := IAMPolicyMemberOpts{
 		Name:       fmt.Sprintf("%s-workload-identity-user", sa.Name),
 		Role:       "roles/iam.workloadIdentityUser",
 		Kind:       "IAMServiceAccount",
-		External:   fmt.Sprintf("projects/%s/serviceAccounts/%s", unionEnv.GCPProjectName, unionEnv.GoogleServiceAccountEmail(sa.Name)),
+		External:   fmt.Sprintf("projects/%s/serviceAccounts/%s", sa.GCPProjectName, sa.GoogleServiceAccountEmail()),
 		APIVersion: "iam.cnrm.cloud.google.com/v1beta1",
-		Member:     fmt.Sprintf("%s.svc.id.goog[%s/%s]", r.GCPProjectName, unionEnv.Namespace(), sa.Name),
+		Member:     fmt.Sprintf("%s.svc.id.goog[%s/%s]", sa.GCPProjectName, sa.Namespace(), sa.Name),
 	}
 
 	dataBucket := IAMPolicyMemberOpts{
@@ -42,7 +41,7 @@ func (r *Reconciler) createIAMPolicyMembers(ctx context.Context, unionEnv *union
 		Kind:       "StorageBucket",
 		External:   r.DataBucket,
 		APIVersion: "storage.cnrm.cloud.google.com/v1beta1",
-		Member:     unionEnv.GoogleServiceAccountEmail(sa.Name),
+		Member:     sa.GoogleServiceAccountEmail(),
 	}
 	fastRegistrationBucket := IAMPolicyMemberOpts{
 		Name:       fmt.Sprintf("%s-union-fast-registration-bucket-viewer", sa.Name),
@@ -50,7 +49,7 @@ func (r *Reconciler) createIAMPolicyMembers(ctx context.Context, unionEnv *union
 		Kind:       "StorageBucket",
 		External:   r.FastRegistrationBucket,
 		APIVersion: "storage.cnrm.cloud.google.com/v1beta1",
-		Member:     unionEnv.GoogleServiceAccountEmail(sa.Name),
+		Member:     sa.GoogleServiceAccountEmail(),
 	}
 
 	policyMembers := []IAMPolicyMemberOpts{
@@ -60,7 +59,7 @@ func (r *Reconciler) createIAMPolicyMembers(ctx context.Context, unionEnv *union
 	}
 
 	for _, member := range policyMembers {
-		if err := r.createIAMPolicyMember(ctx, unionEnv, member); err != nil {
+		if err := r.createIAMPolicyMember(ctx, sa.UnionEnv, member); err != nil {
 			return err
 		}
 	}
@@ -90,7 +89,7 @@ func (r *Reconciler) createIAMPolicyMember(
 					Name:      opts.Name,
 					Namespace: unionEnv.Namespace(),
 					Annotations: map[string]string{
-						"cnrm.cloud.google.com/project-id": r.GCPProjectName,
+						"cnrm.cloud.google.com/project-id": unionEnv.GCPProjectName,
 					},
 				},
 				Spec: iam.IAMPolicyMemberSpec{
@@ -116,79 +115,76 @@ func (r *Reconciler) createIAMPolicyMember(
 	return nil
 }
 
-func (r *Reconciler) reconcileServiceAccountForDomain(ctx context.Context, unionEnv *uniontypes.UnionEnv, serviceAccount datanavnov1.UnionServiceAccount) error {
-	if err := r.reconcileIAMServiceAccount(ctx, unionEnv, serviceAccount); err != nil {
+func (r *Reconciler) reconcileServiceAccountForDomain(ctx context.Context, sa uniontypes.ServiceAccount) error {
+	if err := r.reconcileIAMServiceAccount(ctx, sa); err != nil {
 		return err
 	}
-	return r.reconcileServiceAccount(ctx, unionEnv, serviceAccount)
+	return r.reconcileServiceAccount(ctx, sa)
 }
 
-func (r *Reconciler) reconcileIAMServiceAccount(ctx context.Context, unionEnv *uniontypes.UnionEnv, serviceAccount datanavnov1.UnionServiceAccount) error {
+func (r *Reconciler) reconcileIAMServiceAccount(ctx context.Context, sa uniontypes.ServiceAccount) error {
 	log := logf.FromContext(ctx)
-	googleServiceAccountName := unionEnv.GoogleServiceAccountName(serviceAccount.Name)
 
 	iamServiceAccount := &iam.IAMServiceAccount{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      googleServiceAccountName,
-			Namespace: unionEnv.Namespace(),
+			Name:      sa.GoogleServiceAccountName(),
+			Namespace: sa.Namespace(),
 		},
 	}
 
-	err := r.Get(ctx, types.NamespacedName{Name: googleServiceAccountName, Namespace: unionEnv.Namespace()}, iamServiceAccount)
+	err := r.Get(ctx, types.NamespacedName{Name: sa.GoogleServiceAccountName(), Namespace: sa.Namespace()}, iamServiceAccount)
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
-			log.Error(err, "Failed to get IAMServiceAccount", "name", googleServiceAccountName)
+			log.Error(err, "Failed to get IAMServiceAccount", "name", sa.GoogleServiceAccountName())
 			return err
 		}
-
 		// Create new IAMServiceAccount.
-		setUnionMetadata(iamServiceAccount, unionEnv, map[string]string{
-			"cnrm.cloud.google.com/project-id": r.GCPProjectName,
+		setUnionMetadata(iamServiceAccount, sa.UnionEnv, map[string]string{
+			"cnrm.cloud.google.com/project-id": sa.GCPProjectName,
 		})
-		iamServiceAccount.Spec.DisplayName = fmt.Sprintf("Union service account %s for domain %s in project %s", serviceAccount.Name, unionEnv.Domain, unionEnv.Project)
+		iamServiceAccount.Spec.DisplayName = fmt.Sprintf("Union service account %s for domain %s in project %s", sa.Name, sa.Domain, sa.Project)
 		if err := r.Create(ctx, iamServiceAccount); err != nil {
-			log.Error(err, "Failed to create IAMServiceAccount", "name", googleServiceAccountName)
+			log.Error(err, "Failed to create IAMServiceAccount", "name", sa.GoogleServiceAccountName())
 			return err
 		}
-		log.Info("Created IAMServiceAccount", "name", googleServiceAccountName)
+		log.Info("Created IAMServiceAccount", "name", sa.GoogleServiceAccountName())
 		return nil
 	}
 
 	// Patch labels/annotations on existing IAMServiceAccount (avoids touching immutable spec fields).
 	patch := client.MergeFrom(iamServiceAccount.DeepCopy())
-	setUnionMetadata(iamServiceAccount, unionEnv, map[string]string{
-		"cnrm.cloud.google.com/project-id": r.GCPProjectName,
+	setUnionMetadata(iamServiceAccount, sa.UnionEnv, map[string]string{
+		"cnrm.cloud.google.com/project-id": sa.GCPProjectName,
 	})
 	if err := r.Patch(ctx, iamServiceAccount, patch); err != nil {
-		log.Error(err, "Failed to patch IAMServiceAccount", "name", googleServiceAccountName)
+		log.Error(err, "Failed to patch IAMServiceAccount", "name", sa.GoogleServiceAccountName())
 		return err
 	}
 	return nil
 }
 
-func (r *Reconciler) reconcileServiceAccount(ctx context.Context, unionEnv *uniontypes.UnionEnv, serviceAccount datanavnov1.UnionServiceAccount) error {
+func (r *Reconciler) reconcileServiceAccount(ctx context.Context, sa uniontypes.ServiceAccount) error {
 	log := logf.FromContext(ctx)
-	googleServiceAccountName := unionEnv.GoogleServiceAccountName(serviceAccount.Name)
 
-	sa := &v1.ServiceAccount{
+	k8sSa := &v1.ServiceAccount{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      serviceAccount.Name,
-			Namespace: unionEnv.Namespace(),
+			Name:      sa.Name,
+			Namespace: sa.Namespace(),
 		},
 	}
 
-	result, err := controllerutil.CreateOrUpdate(ctx, r.Client, sa, func() error {
-		setUnionMetadata(sa, unionEnv, map[string]string{
-			"iam.gke.io/gcp-service-account": googleServiceAccountName + "@" + r.GCPProjectName + ".iam.gserviceaccount.com",
+	result, err := controllerutil.CreateOrUpdate(ctx, r.Client, k8sSa, func() error {
+		setUnionMetadata(k8sSa, sa.UnionEnv, map[string]string{
+			"iam.gke.io/gcp-service-account": sa.GoogleServiceAccountEmail(),
 		})
 		return nil
 	})
 	if err != nil {
-		log.Error(err, "Failed to create or update ServiceAccount", "name", serviceAccount.Name)
+		log.Error(err, "Failed to create or update ServiceAccount", "name", sa.Name)
 		return err
 	}
 	if result != controllerutil.OperationResultNone {
-		log.Info("Reconciled ServiceAccount", "name", serviceAccount.Name, "result", result)
+		log.Info("Reconciled ServiceAccount", "name", sa.Name, "result", result)
 	}
 	return nil
 }

@@ -69,7 +69,6 @@ func (r *UnionTeamServiceAccountsReconciler) Reconcile(ctx context.Context, req 
 
 	saReconciler := serviceaccount.Reconciler{
 		Client:                 r.Client,
-		GCPProjectName:         r.UnionConfig.GCPProjectName,
 		FastRegistrationBucket: r.UnionConfig.FastRegistrationBucket,
 		DataBucket:             r.UnionConfig.DataBucket,
 	}
@@ -86,10 +85,14 @@ func (r *UnionTeamServiceAccountsReconciler) Reconcile(ctx context.Context, req 
 	}
 
 	unionEnv := &uniontypes.UnionEnv{
-		Project:         utsa.Spec.Project,
-		Domain:          utsa.Spec.Domain,
-		ServiceAccounts: utsa.Spec.ServiceAccounts,
-		GCPProjectName:  r.UnionConfig.GCPProjectName,
+		Project:        utsa.Spec.Project,
+		Domain:         utsa.Spec.Domain,
+		GCPProjectName: r.UnionConfig.GCPProjectName,
+	}
+
+	serviceAccounts := make([]uniontypes.ServiceAccount, 0, len(utsa.Spec.ServiceAccounts))
+	for _, sa := range utsa.Spec.ServiceAccounts {
+		serviceAccounts = append(serviceAccounts, unionEnv.ServiceAccount(sa))
 	}
 
 	// Handle deletion: clean up all cross-namespace resources before allowing CR removal.
@@ -123,19 +126,16 @@ func (r *UnionTeamServiceAccountsReconciler) Reconcile(ctx context.Context, req 
 	}
 
 	// Normal reconciliation.
-	if err := saReconciler.CreateOrUpdateServiceAccounts(ctx, unionEnv); err != nil {
+	if err := saReconciler.CreateOrUpdateServiceAccounts(ctx, unionEnv, serviceAccounts); err != nil {
 		return ctrl.Result{}, err
 	}
-	err = istioReconciler.EnsureExternalHosts(ctx, unionEnv)
-	if err != nil {
+	if err := istioReconciler.EnsureExternalHosts(ctx, serviceAccounts); err != nil {
 		return ctrl.Result{}, err
 	}
-	err = istioReconciler.EnsureAuthorizationPolicies(ctx, unionEnv)
-	if err != nil {
+	if err := istioReconciler.EnsureAuthorizationPolicies(ctx, serviceAccounts); err != nil {
 		return ctrl.Result{}, err
 	}
-	err = istioReconciler.CleanupUnusedHosts(ctx)
-	if err != nil {
+	if err := istioReconciler.CleanupUnusedHosts(ctx); err != nil {
 		return ctrl.Result{}, err
 	}
 
