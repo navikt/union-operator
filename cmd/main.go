@@ -89,8 +89,10 @@ func main() {
 	flag.StringVar(&metricsCertKey, "metrics-cert-key", "tls.key", "The name of the metrics server key file.")
 	flag.BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
-	flag.StringVar(&unionConfig.GCPProjectName, "gcp-project-name", os.Getenv("UNION_DATAPLANE_GCP_PROJECT_NAME"), "The GCP project name.")
-	flag.StringVar(&unionConfig.FastRegistrationBucket, "fast-registration-bucket", os.Getenv("UNION_FAST_REGISTRATION_BUCKET"), "The fast registration bucket name.")
+	flag.StringVar(&unionConfig.GCPProjectName, "gcp-project-name",
+		os.Getenv("UNION_DATAPLANE_GCP_PROJECT_NAME"), "The GCP project name.")
+	flag.StringVar(&unionConfig.FastRegistrationBucket, "fast-registration-bucket",
+		os.Getenv("UNION_FAST_REGISTRATION_BUCKET"), "The fast registration bucket name.")
 	flag.StringVar(&unionConfig.DataBucket, "data-bucket", os.Getenv("UNION_DATA_BUCKET"), "The data bucket name.")
 	opts := zap.Options{
 		Development: true,
