@@ -7,3 +7,5 @@ configMapGenerator:
   - config.yaml=config-dev.yaml
   name: manager-config
   namespace: union-operator-system
+generatorOptions:
+  disableNameSuffixHash: true

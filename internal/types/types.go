@@ -4,14 +4,25 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"os"
 
 	datanavnov1 "github.com/navikt/union-operator/api/v1"
+	"go.yaml.in/yaml/v2"
 )
 
 type UnionDataplaneConfig struct {
 	GCPProjectName         string `yaml:"gcpProjectName"`
 	FastRegistrationBucket string `yaml:"fastRegistrationBucket"`
 	DataBucket             string `yaml:"dataBucket"`
+	OnpremHostMapFilePath  string `yaml:"onpremHostMapFilePath"`
+}
+
+func (c *UnionDataplaneConfig) LoadFromFile(path string) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	return yaml.Unmarshal(data, c)
 }
 
 type OnpremHostMap map[string]OnpremHost

@@ -64,6 +64,8 @@ func init() {
 // nolint:gocyclo
 func main() {
 	unionConfig := &uniontypes.UnionDataplaneConfig{}
+	unionConfig.LoadFromFile(os.Getenv("MANAGER_CONFIG_PATH"))
+
 	var metricsAddr string
 	var metricsCertPath, metricsCertName, metricsCertKey string
 	var webhookCertPath, webhookCertName, webhookCertKey string
@@ -89,9 +91,6 @@ func main() {
 	flag.StringVar(&metricsCertKey, "metrics-cert-key", "tls.key", "The name of the metrics server key file.")
 	flag.BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
-	flag.StringVar(&unionConfig.GCPProjectName, "gcp-project-name", os.Getenv("UNION_DATAPLANE_GCP_PROJECT_NAME"), "The GCP project name.")
-	flag.StringVar(&unionConfig.FastRegistrationBucket, "fast-registration-bucket", os.Getenv("UNION_FAST_REGISTRATION_BUCKET"), "The fast registration bucket name.")
-	flag.StringVar(&unionConfig.DataBucket, "data-bucket", os.Getenv("UNION_DATA_BUCKET"), "The data bucket name.")
 	opts := zap.Options{
 		Development: true,
 	}
@@ -191,7 +190,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	onpremHostData, err := os.ReadFile("../dataplattform-iac/shared/onprem-hosts.yaml")
+	onpremHostData, err := os.ReadFile(unionConfig.OnpremHostMapFilePath)
 	if err != nil {
 		setupLog.Error(err, "Failed to read onprem-hosts.yaml")
 		os.Exit(1)

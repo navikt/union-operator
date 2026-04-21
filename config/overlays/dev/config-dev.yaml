@@ -1,3 +1,4 @@
-UNION_DATAPLANE_PROJECT: "nav-data-union-restricted-dev"
-UNION_FAST_REGISTRATION_BUCKET: "restricted-dev-fast-registration"
-UNION_DATA_BUCKET: "restricted-dev-data"
+gcpProjectName: "nav-data-union-restricted-dev"
+fastRegistrationBucket: "restricted-dev-fast-registration"
+dataBucket: "restricted-dev-data"
+onpremHostMapFilePath: "/etc/config/onprem-hostmap.yaml"

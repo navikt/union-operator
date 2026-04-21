@@ -66,12 +66,9 @@ spec:
         image: controller:latest
         name: manager
         ports: []
-        envFrom:
-        - configMapRef:
-            name: manager-config
         env:
-        - name: ONPREM_HOSTMAP_PATH
-          value: /etc/config/onprem-hostmap.yaml
+        - name: MANAGER_CONFIG_PATH
+          value: /etc/manager-config/config.yaml
         securityContext:
           readOnlyRootFilesystem: true
           allowPrivilegeEscalation: false
@@ -103,9 +100,15 @@ spec:
         - name: onprem-hostmap
           mountPath: /etc/config
           readOnly: true
+        - name: manager-config
+          mountPath: /etc/manager-config
+          readOnly: true
       volumes:
       - name: onprem-hostmap
         configMap:
           name: onprem-hostmap
+      - name: manager-config
+        configMap:
+          name: manager-config
       serviceAccountName: controller-manager
       terminationGracePeriodSeconds: 10
