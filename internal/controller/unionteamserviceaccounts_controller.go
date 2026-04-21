@@ -27,13 +27,12 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	datanavnov1 "github.com/navikt/union-operator/api/v1"
-	"github.com/navikt/union-operator/internal/googleapis"
 	"github.com/navikt/union-operator/internal/istio"
+	"github.com/navikt/union-operator/internal/serviceaccount"
 	uniontypes "github.com/navikt/union-operator/internal/types"
 )
 
 const (
-	GCPProjectName = "nav-data-union-restricted-dev"
 	unionFinalizer = "data.nav.no/finalizer"
 )
 
@@ -42,6 +41,7 @@ type UnionTeamServiceAccountsReconciler struct {
 	client.Client
 	Scheme      *runtime.Scheme
 	OnpremHosts uniontypes.OnpremHostMap
+	UnionConfig *uniontypes.UnionDataplaneConfig
 }
 
 // +kubebuilder:rbac:groups=data.nav.no,resources=unionteamserviceaccounts,verbs=get;list;watch;create;update;patch;delete
@@ -67,6 +67,13 @@ func (r *UnionTeamServiceAccountsReconciler) Reconcile(ctx context.Context, req 
 		OnpremHosts: r.OnpremHosts,
 	}
 
+	saReconciler := serviceaccount.Reconciler{
+		Client:                 r.Client,
+		GCPProjectName:         r.UnionConfig.GCPProjectName,
+		FastRegistrationBucket: r.UnionConfig.FastRegistrationBucket,
+		DataBucket:             r.UnionConfig.DataBucket,
+	}
+
 	utsa := &datanavnov1.UnionTeamServiceAccounts{}
 	err := r.Get(ctx, req.NamespacedName, utsa)
 	if err != nil {
@@ -82,7 +89,7 @@ func (r *UnionTeamServiceAccountsReconciler) Reconcile(ctx context.Context, req 
 		Project:         utsa.Spec.Project,
 		Domain:          utsa.Spec.Domain,
 		ServiceAccounts: utsa.Spec.ServiceAccounts,
-		GCPProjectName:  GCPProjectName,
+		GCPProjectName:  r.UnionConfig.GCPProjectName,
 	}
 
 	// Handle deletion: clean up all cross-namespace resources before allowing CR removal.
@@ -90,7 +97,7 @@ func (r *UnionTeamServiceAccountsReconciler) Reconcile(ctx context.Context, req 
 		if controllerutil.ContainsFinalizer(utsa, unionFinalizer) {
 			log.Info("Running finalizer cleanup", "project", utsa.Spec.Project, "domain", utsa.Spec.Domain)
 
-			if err := r.cleanupAllResources(ctx, unionEnv); err != nil {
+			if err := saReconciler.CleanupAllResources(ctx, unionEnv); err != nil {
 				log.Error(err, "Failed to run finalizer cleanup")
 				return ctrl.Result{}, err
 			}
@@ -116,7 +123,7 @@ func (r *UnionTeamServiceAccountsReconciler) Reconcile(ctx context.Context, req 
 	}
 
 	// Normal reconciliation.
-	if err := r.updateServiceAccountsForDomain(ctx, unionEnv); err != nil {
+	if err := saReconciler.CreateOrUpdateServiceAccounts(ctx, unionEnv); err != nil {
 		return ctrl.Result{}, err
 	}
 	err = istioReconciler.EnsureExternalHosts(ctx, unionEnv)
@@ -128,10 +135,6 @@ func (r *UnionTeamServiceAccountsReconciler) Reconcile(ctx context.Context, req 
 		return ctrl.Result{}, err
 	}
 	err = istioReconciler.CleanupUnusedHosts(ctx)
-	if err != nil {
-		return ctrl.Result{}, err
-	}
-	err = googleapis.EnsureServicePerimeter(ctx, unionEnv)
 	if err != nil {
 		return ctrl.Result{}, err
 	}

@@ -19,7 +19,6 @@ package main
 import (
 	"crypto/tls"
 	"flag"
-	"fmt"
 	"os"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
@@ -37,7 +36,6 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
-	"github.com/davecgh/go-spew/spew"
 	datanavnov1 "github.com/navikt/union-operator/api/v1"
 	"github.com/navikt/union-operator/internal/controller"
 	uniontypes "github.com/navikt/union-operator/internal/types"
@@ -65,6 +63,7 @@ func init() {
 
 // nolint:gocyclo
 func main() {
+	unionConfig := &uniontypes.UnionDataplaneConfig{}
 	var metricsAddr string
 	var metricsCertPath, metricsCertName, metricsCertKey string
 	var webhookCertPath, webhookCertName, webhookCertKey string
@@ -90,6 +89,9 @@ func main() {
 	flag.StringVar(&metricsCertKey, "metrics-cert-key", "tls.key", "The name of the metrics server key file.")
 	flag.BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
+	flag.StringVar(&unionConfig.GCPProjectName, "gcp-project-name", os.Getenv("UNION_DATAPLANE_GCP_PROJECT_NAME"), "The GCP project name.")
+	flag.StringVar(&unionConfig.FastRegistrationBucket, "fast-registration-bucket", os.Getenv("UNION_FAST_REGISTRATION_BUCKET"), "The fast registration bucket name.")
+	flag.StringVar(&unionConfig.DataBucket, "data-bucket", os.Getenv("UNION_DATA_BUCKET"), "The data bucket name.")
 	opts := zap.Options{
 		Development: true,
 	}
@@ -202,13 +204,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	fmt.Println("On-prem hosts loaded from onprem-hosts.yaml:")
-	spew.Dump(onpremHosts)
-
 	if err := (&controller.UnionTeamServiceAccountsReconciler{
 		Client:      mgr.GetClient(),
 		Scheme:      mgr.GetScheme(),
 		OnpremHosts: onpremHosts,
+		UnionConfig: unionConfig,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "Failed to create controller", "controller", "UnionTeamServiceAccounts")
 		os.Exit(1)

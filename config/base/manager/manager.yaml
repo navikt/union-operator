@@ -66,6 +66,9 @@ spec:
         image: controller:latest
         name: manager
         ports: []
+        envFrom:
+        - configMapRef:
+            name: manager-config
         env:
         - name: ONPREM_HOSTMAP_PATH
           value: /etc/config/onprem-hostmap.yaml
