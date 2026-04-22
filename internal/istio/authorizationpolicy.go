@@ -9,13 +9,14 @@ import (
 	uniontypes "github.com/navikt/union-operator/internal/types"
 	istiosecuritymodels "istio.io/api/security/v1beta1"
 	istiosecurity "istio.io/client-go/pkg/apis/security/v1beta1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 func (r *Reconciler) ensureAuthorizationPolicyForHost(ctx context.Context, sa uniontypes.ServiceAccount, host *datanavnov1.Host, protocol, hostTypeLabel string) error {
-	_ = logf.FromContext(ctx)
+	log := logf.FromContext(ctx)
 
 	apList := &istiosecurity.AuthorizationPolicyList{}
 	err := r.List(ctx, apList, inEgressNamespace(), client.MatchingLabels{
@@ -34,6 +35,12 @@ func (r *Reconciler) ensureAuthorizationPolicyForHost(ctx context.Context, sa un
 			return err
 		}
 		if err = r.Create(ctx, ap); err != nil {
+			if apierrors.IsAlreadyExists(err) {
+				// Stale cache: the AuthorizationPolicy exists but the label-index
+				// in the informer cache has not caught up yet.
+				log.V(1).Info("AuthorizationPolicy already exists (stale cache)", "name", ap.Name)
+				return nil
+			}
 			return err
 		}
 	}

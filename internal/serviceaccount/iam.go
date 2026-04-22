@@ -104,6 +104,10 @@ func (r *Reconciler) createIAMPolicyMember(
 			}
 			err = r.Create(ctx, member)
 			if err != nil {
+				if apierrors.IsAlreadyExists(err) {
+					log.V(1).Info("IAMPolicyMember already exists (stale cache)", "name", opts.Name)
+					return nil
+				}
 				log.Error(err, "Failed to create IAM policy member", "name", opts.Name)
 				return err
 			}
@@ -144,6 +148,12 @@ func (r *Reconciler) reconcileIAMServiceAccount(ctx context.Context, sa uniontyp
 		})
 		iamServiceAccount.Spec.DisplayName = fmt.Sprintf("Union service account %s for domain %s in project %s", sa.Name, sa.Domain, sa.Project)
 		if err := r.Create(ctx, iamServiceAccount); err != nil {
+			if apierrors.IsAlreadyExists(err) {
+				// Stale cache: the object exists but the informer hasn't observed it yet.
+				// It will be picked up on the next reconcile.
+				log.V(1).Info("IAMServiceAccount already exists (stale cache), will reconcile on next pass", "name", sa.GoogleServiceAccountName())
+				return nil
+			}
 			log.Error(err, "Failed to create IAMServiceAccount", "name", sa.GoogleServiceAccountName())
 			return err
 		}
