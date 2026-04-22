@@ -135,6 +135,9 @@ func (r *UnionTeamServiceAccountsReconciler) Reconcile(ctx context.Context, req 
 	if err := istioReconciler.EnsureAuthorizationPolicies(ctx, serviceAccounts); err != nil {
 		return ctrl.Result{}, err
 	}
+	if err := istioReconciler.CleanupRemovedServiceAccountAuthzPolicies(ctx, utsa); err != nil {
+		return ctrl.Result{}, err
+	}
 	if err := istioReconciler.CleanupUnusedHosts(ctx); err != nil {
 		return ctrl.Result{}, err
 	}

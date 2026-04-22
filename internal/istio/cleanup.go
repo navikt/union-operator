@@ -33,6 +33,55 @@ func (r *Reconciler) CleanupUnusedHosts(ctx context.Context) error {
 	return nil
 }
 
+// CleanupRemovedServiceAccountAuthzPolicies deletes AuthorizationPolicies in the
+// istio-egress namespace whose "service-account" label no longer matches any
+// service account in utsa.Spec.ServiceAccounts. This covers both external and
+// internal host-type policies, which are otherwise orphaned when a service
+// account is removed from the spec.
+func (r *Reconciler) CleanupRemovedServiceAccountAuthzPolicies(ctx context.Context, utsa *datanavnov1.UnionTeamServiceAccounts) error {
+	log := logf.FromContext(ctx)
+
+	currentSAs := make(map[string]struct{}, len(utsa.Spec.ServiceAccounts))
+	for _, sa := range utsa.Spec.ServiceAccounts {
+		currentSAs[sa.Name] = struct{}{}
+	}
+
+	apList := &istiosecurity.AuthorizationPolicyList{}
+	if err := r.List(ctx, apList, inEgressNamespace(), client.MatchingLabels{
+		"project": utsa.Spec.Project,
+		"domain":  utsa.Spec.Domain,
+	}); err != nil {
+		return err
+	}
+
+	var errs []error
+	for _, ap := range apList.Items {
+		saName := ap.Labels["service-account"]
+		if saName == "" {
+			continue
+		}
+		if _, ok := currentSAs[saName]; ok {
+			continue
+		}
+		if err := r.Delete(ctx, ap); err != nil {
+			if apierrors.IsNotFound(err) {
+				continue
+			}
+			errs = append(errs, err)
+			continue
+		}
+		log.Info("Deleted orphaned AuthorizationPolicy for removed ServiceAccount",
+			"name", ap.Name,
+			"namespace", ap.Namespace,
+			"serviceAccount", saName,
+			"project", utsa.Spec.Project,
+			"domain", utsa.Spec.Domain,
+		)
+	}
+
+	return errors.Join(errs...)
+}
+
 func (r *Reconciler) cleanupInternalHosts(ctx context.Context, utsas datanavnov1.UnionTeamServiceAccountsList) error {
 	for _, utsa := range utsas.Items {
 		for _, sa := range utsa.Spec.ServiceAccounts {
