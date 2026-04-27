@@ -112,11 +112,21 @@ lint-config: golangci-lint ## Verify golangci-lint linter configuration
 build: manifests generate fmt vet ## Build manager binary.
 	go build -o bin/manager cmd/main.go
 
+.PHONY: config
+config:
+	@echo "Fetching manager config from cluster..."
+	@kubectl --context dev-union-restricted get configmap manager-config -n union-operator-system -o jsonpath='{.data.config\.yaml}' > .manager-config.yaml
+	@echo "Manager config saved to .manager-config.yaml"
+	@sed -i '' 's/onpremHostMapFilePath: .*/onpremHostMapFilePath: ".onprem-hostmap.yaml"/g' .manager-config.yaml
+
+	@echo "Fetching onprem hostmap cluster..."
+	@kubectl --context dev-union-restricted get configmap onprem-hostmap -n union-operator-system -o jsonpath='{.data.onprem-hostmap\.yaml}' > .onprem-hostmap.yaml
+	@echo "Onprem hostmap saved to .onprem-hostmap.yaml"
+
+
 .PHONY: run
-run: manifests generate fmt vet ## Run a controller from your host.
-	UNION_DATAPLANE_GCP_PROJECT_NAME=nav-data-union-restricted-dev \
-	UNION_FAST_REGISTRATION_BUCKET=restricted-dev-fast-registration \
-	UNION_DATA_BUCKET=restricted-dev-data \
+run: config manifests generate fmt vet ## Run a controller from your host.
+	MANAGER_CONFIG_PATH=".manager-config.yaml" \
 	go run ./cmd/main.go
 
 # (i.e. docker build --platform linux/arm64). However, you must enable docker buildKit for it.

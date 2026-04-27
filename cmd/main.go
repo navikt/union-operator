@@ -64,7 +64,11 @@ func init() {
 // nolint:gocyclo
 func main() {
 	unionConfig := &uniontypes.UnionDataplaneConfig{}
-	unionConfig.LoadFromFile(os.Getenv("MANAGER_CONFIG_PATH"))
+	err := unionConfig.LoadFromFile(os.Getenv("MANAGER_CONFIG_PATH"))
+	if err != nil {
+		setupLog.Error(err, "Failed to load union dataplane config")
+		os.Exit(1)
+	}
 
 	var metricsAddr string
 	var metricsCertPath, metricsCertName, metricsCertKey string

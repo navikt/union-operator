@@ -31,3 +31,8 @@ go.work
 
 # Downloaded test dependencies
 .testdata/
+
+# Configuration files
+.onprem-hostmap.yaml
+.manager-config.yaml
+
