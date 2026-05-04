@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	datanavnov1 "github.com/navikt/union-operator/api/v1"
+	uniontypes "github.com/navikt/union-operator/internal/types"
 	"istio.io/api/networking/v1alpha3"
 	istionetworkingmodels "istio.io/api/networking/v1beta1"
 	istionetworking "istio.io/client-go/pkg/apis/networking/v1beta1"
@@ -12,7 +13,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-func (r *Reconciler) ensureDestinationRule(ctx context.Context, host datanavnov1.Host) error {
+func (r *Reconciler) ensureDestinationRule(ctx context.Context, sa uniontypes.ServiceAccount, host datanavnov1.Host) error {
 	dr := &istionetworking.DestinationRuleList{}
 	err := r.List(ctx, dr, inEgressNamespace(), client.MatchingLabels{
 		"host": host.Host,
@@ -23,7 +24,7 @@ func (r *Reconciler) ensureDestinationRule(ctx context.Context, host datanavnov1
 	}
 
 	if len(dr.Items) < 1 {
-		if err = r.Create(ctx, newDestinationRuleToGateway(host)); err != nil {
+		if err = r.Create(ctx, newDestinationRuleToGateway(sa, host)); err != nil {
 			return err
 		}
 	}
@@ -37,7 +38,7 @@ func (r *Reconciler) ensureDestinationRule(ctx context.Context, host datanavnov1
 	}
 
 	if len(dr.Items) < 1 {
-		if err = r.Create(ctx, newDestinationRuleFromGateway(host)); err != nil {
+		if err = r.Create(ctx, newDestinationRuleFromGateway(sa, host)); err != nil {
 			return err
 		}
 	}
@@ -45,8 +46,9 @@ func (r *Reconciler) ensureDestinationRule(ctx context.Context, host datanavnov1
 	return nil
 }
 
-func newDestinationRuleToGateway(host datanavnov1.Host) *istionetworking.DestinationRule {
+func newDestinationRuleToGateway(sa uniontypes.ServiceAccount, host datanavnov1.Host) *istionetworking.DestinationRule {
 	return newDestinationRule(
+		sa,
 		fmt.Sprintf("%s-to-gateway", host.Name()),
 		egressToGatewayLabel,
 		gatewayHost,
@@ -62,8 +64,9 @@ func newDestinationRuleToGateway(host datanavnov1.Host) *istionetworking.Destina
 		})
 }
 
-func newDestinationRuleFromGateway(host datanavnov1.Host) *istionetworking.DestinationRule {
+func newDestinationRuleFromGateway(sa uniontypes.ServiceAccount, host datanavnov1.Host) *istionetworking.DestinationRule {
 	return newDestinationRule(
+		sa,
 		fmt.Sprintf("%s-from-gateway", host.Name()),
 		egressFromGatewayLabel,
 		host.Host,
@@ -78,7 +81,7 @@ func newDestinationRuleFromGateway(host datanavnov1.Host) *istionetworking.Desti
 		})
 }
 
-func newDestinationRule(name, gatewayLabel, targetHost string, host datanavnov1.Host, portTrafficPolicy *v1alpha3.TrafficPolicy_PortTrafficPolicy) *istionetworking.DestinationRule {
+func newDestinationRule(sa uniontypes.ServiceAccount, name, gatewayLabel, targetHost string, host datanavnov1.Host, portTrafficPolicy *v1alpha3.TrafficPolicy_PortTrafficPolicy) *istionetworking.DestinationRule {
 	return &istionetworking.DestinationRule{
 		ObjectMeta: v1.ObjectMeta{
 			Name:      name,

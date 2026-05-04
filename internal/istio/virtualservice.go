@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	datanavnov1 "github.com/navikt/union-operator/api/v1"
+	uniontypes "github.com/navikt/union-operator/internal/types"
 	istionetworkingmodels "istio.io/api/networking/v1beta1"
 	istionetworking "istio.io/client-go/pkg/apis/networking/v1beta1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -13,14 +14,14 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-func (r *Reconciler) ensureVirtualServiceForHost(ctx context.Context, host *datanavnov1.Host) error {
+func (r *Reconciler) ensureVirtualServiceForHost(ctx context.Context, sa uniontypes.ServiceAccount, host *datanavnov1.Host) error {
 	log := logf.FromContext(ctx)
 
 	vs := &istionetworking.VirtualService{}
 	err := r.Get(ctx, types.NamespacedName{Name: host.Name(), Namespace: EgressNamespace}, vs)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
-			vs = newVirtualServiceForHost(host)
+			vs = newVirtualServiceForHost(sa, host)
 			if err = r.Create(ctx, vs); err != nil {
 				log.Error(err, fmt.Sprintf("Failed to create VirtualService %s in %s namespace", host.Name(), EgressNamespace))
 				return err
@@ -34,7 +35,7 @@ func (r *Reconciler) ensureVirtualServiceForHost(ctx context.Context, host *data
 	return nil
 }
 
-func newVirtualServiceForHost(host *datanavnov1.Host) *istionetworking.VirtualService {
+func newVirtualServiceForHost(sa uniontypes.ServiceAccount, host *datanavnov1.Host) *istionetworking.VirtualService {
 	return &istionetworking.VirtualService{
 		ObjectMeta: v1.ObjectMeta{
 			Name:      host.Name(),

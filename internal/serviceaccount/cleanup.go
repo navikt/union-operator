@@ -50,6 +50,49 @@ func (r *Reconciler) CleanupAllResources(ctx context.Context, unionEnv *uniontyp
 	return errors.Join(errs...)
 }
 
+func (r *Reconciler) CleanupRemovedServiceAccounts(ctx context.Context, unionEnv *uniontypes.UnionEnv, serviceAccounts []uniontypes.ServiceAccount) error {
+	log := logf.FromContext(ctx)
+	existing := &v1.ServiceAccountList{}
+
+	err := r.List(ctx, existing, client.MatchingLabels{
+		UnionProjectLabel: unionEnv.Project,
+		UnionDomainLabel:  unionEnv.Domain,
+	})
+	if err != nil {
+		log.Error(err, "Failed to list service accounts during cleanup", "project", unionEnv.Project, "domain", unionEnv.Domain)
+		return err
+	}
+
+	var errs []error
+	for _, sa := range existing.Items {
+		if !containsSA(sa.Name, serviceAccounts) {
+			if err := r.cleanupServiceAccount(ctx, unionEnv.ServiceAccountByName(sa.Name)); err != nil {
+				log.Error(err, "Failed to cleanup service account resources during finalizer", "name", sa.Name)
+				errs = append(errs, err)
+				continue
+			}
+
+			if err := r.Delete(ctx, &sa); err != nil {
+				if !apierrors.IsNotFound(err) {
+					log.Error(err, "Failed to delete Kubernetes ServiceAccount during finalizer", "name", sa.Name)
+					errs = append(errs, err)
+				}
+			}
+		}
+	}
+	return errors.Join(errs...)
+}
+
+func containsSA(saName string, serviceAccounts []uniontypes.ServiceAccount) bool {
+	for _, s := range serviceAccounts {
+		if s.Name == saName {
+			return true
+		}
+	}
+
+	return false
+}
+
 // cleanupServiceAccount deletes the IAMServiceAccount and all associated
 // IAMPolicyMembers for a given service account.
 func (r *Reconciler) cleanupServiceAccount(

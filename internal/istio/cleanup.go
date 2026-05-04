@@ -16,6 +16,21 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
+func (r *Reconciler) CleanupAllResources(ctx context.Context, utsa *datanavnov1.UnionTeamServiceAccounts) error {
+	log := logf.FromContext(ctx)
+
+	if err := r.CleanupUTSAServiceAccountAuthzPolicies(ctx, utsa); err != nil {
+		return err
+	}
+
+	log.Info("Completed cleanup of all istio resources for deleted UnionTeamServiceAccounts",
+		"project", utsa.Spec.Project,
+		"domain", utsa.Spec.Domain,
+	)
+
+	return nil
+}
+
 func (r *Reconciler) CleanupUnusedHosts(ctx context.Context) error {
 	var utsas datanavnov1.UnionTeamServiceAccountsList
 	if err := r.List(ctx, &utsas); err != nil {
@@ -31,6 +46,45 @@ func (r *Reconciler) CleanupUnusedHosts(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// CleanupUTSAServiceAccountAuthzPolicies deletes AuthorizationPolicies in the istio-egress namespace
+// as part of the removal of a UnionTeamServiceAccounts CR.
+// All authorization policies whose "service-account" label matches service accounts in
+// the UnionTeamServiceAccounts CR being removed is deleted.
+func (r *Reconciler) CleanupUTSAServiceAccountAuthzPolicies(ctx context.Context, utsa *datanavnov1.UnionTeamServiceAccounts) error {
+	log := logf.FromContext(ctx)
+
+	var errs []error
+	for _, sa := range utsa.Spec.ServiceAccounts {
+		apList := &istiosecurity.AuthorizationPolicyList{}
+		if err := r.List(ctx, apList, inEgressNamespace(), client.MatchingLabels{
+			"project":         utsa.Spec.Project,
+			"domain":          utsa.Spec.Domain,
+			"service-account": sa.Name,
+		}); err != nil {
+			return err
+		}
+
+		for _, ap := range apList.Items {
+			if err := r.Delete(ctx, ap); err != nil {
+				if apierrors.IsNotFound(err) {
+					continue
+				}
+				errs = append(errs, err)
+				continue
+			}
+			log.Info("Deleted orphaned AuthorizationPolicy for removed ServiceAccount",
+				"name", ap.Name,
+				"namespace", ap.Namespace,
+				"serviceAccount", sa.Name,
+				"project", utsa.Spec.Project,
+				"domain", utsa.Spec.Domain,
+			)
+		}
+	}
+
+	return errors.Join(errs...)
 }
 
 // CleanupRemovedServiceAccountAuthzPolicies deletes AuthorizationPolicies in the

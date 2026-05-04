@@ -59,4 +59,6 @@ func setUnionMetadata(obj metav1.Object, unionEnv *uniontypes.UnionEnv, annotati
 	}
 	maps.Copy(existing, annotations)
 	obj.SetAnnotations(existing)
+
+	obj.SetOwnerReferences(unionEnv.OwnerReferences())
 }

@@ -8,6 +8,13 @@ import (
 
 	datanavnov1 "github.com/navikt/union-operator/api/v1"
 	"go.yaml.in/yaml/v2"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+)
+
+const (
+	APIVersion = "data.nav.no/v1"
+	UTSAKind   = "UnionTeamServiceAccounts"
 )
 
 type UnionDataplaneConfig struct {
@@ -22,6 +29,7 @@ func (c *UnionDataplaneConfig) LoadFromFile(path string) error {
 	if err != nil {
 		return err
 	}
+
 	return yaml.Unmarshal(data, c)
 }
 
@@ -33,15 +41,36 @@ type OnpremHost struct {
 	Protocol string   `json:"protocol"`
 }
 
+type UTSAOwnerReference struct {
+	APIVersion string
+	Kind       string
+	Name       string
+	UID        types.UID
+}
+
 type ServiceAccount struct {
 	datanavnov1.UnionServiceAccount
 	*UnionEnv
 }
 
 type UnionEnv struct {
-	Project        string
-	Domain         string
-	GCPProjectName string
+	UTSAOwnerReference *UTSAOwnerReference
+	Project            string
+	Domain             string
+	GCPProjectName     string
+}
+
+func (s *UnionEnv) OwnerReferences() []metav1.OwnerReference {
+	return []metav1.OwnerReference{
+		{
+			APIVersion:         s.UTSAOwnerReference.APIVersion,
+			Kind:               s.UTSAOwnerReference.Kind,
+			Name:               s.UTSAOwnerReference.Name,
+			UID:                s.UTSAOwnerReference.UID,
+			Controller:         new(true),
+			BlockOwnerDeletion: new(true),
+		},
+	}
 }
 
 func (u *UnionEnv) Namespace() string {
@@ -49,7 +78,10 @@ func (u *UnionEnv) Namespace() string {
 }
 
 func (u *UnionEnv) ServiceAccount(sa datanavnov1.UnionServiceAccount) ServiceAccount {
-	return ServiceAccount{UnionServiceAccount: sa, UnionEnv: u}
+	return ServiceAccount{
+		UnionServiceAccount: sa,
+		UnionEnv:            u,
+	}
 }
 
 func (u *UnionEnv) ServiceAccountByName(name string) ServiceAccount {

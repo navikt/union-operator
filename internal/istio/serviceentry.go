@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	datanavnov1 "github.com/navikt/union-operator/api/v1"
+	uniontypes "github.com/navikt/union-operator/internal/types"
 	istionetworkingmodels "istio.io/api/networking/v1beta1"
 	istionetworking "istio.io/client-go/pkg/apis/networking/v1beta1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -23,12 +24,12 @@ func (r *Reconciler) serviceEntryExists(ctx context.Context, host datanavnov1.Ho
 	return len(seList.Items) > 0, nil
 }
 
-func (r *Reconciler) createServiceEntry(ctx context.Context, host datanavnov1.Host) error {
-	se := newHTTPSServiceEntry(host)
+func (r *Reconciler) createServiceEntry(ctx context.Context, sa uniontypes.ServiceAccount, host datanavnov1.Host) error {
+	se := newHTTPSServiceEntry(sa, host)
 	return r.Create(ctx, se)
 }
 
-func newHTTPSServiceEntry(host datanavnov1.Host) *istionetworking.ServiceEntry {
+func newHTTPSServiceEntry(sa uniontypes.ServiceAccount, host datanavnov1.Host) *istionetworking.ServiceEntry {
 	return &istionetworking.ServiceEntry{
 		ObjectMeta: v1.ObjectMeta{
 			Name:      host.Name(),

@@ -88,6 +88,12 @@ func (r *UnionTeamServiceAccountsReconciler) Reconcile(ctx context.Context, req 
 		Project:        utsa.Spec.Project,
 		Domain:         utsa.Spec.Domain,
 		GCPProjectName: r.UnionConfig.GCPProjectName,
+		UTSAOwnerReference: &uniontypes.UTSAOwnerReference{
+			APIVersion: utsa.APIVersion,
+			Kind:       utsa.Kind,
+			Name:       utsa.Name,
+			UID:        utsa.UID,
+		},
 	}
 
 	serviceAccounts := make([]uniontypes.ServiceAccount, 0, len(utsa.Spec.ServiceAccounts))
@@ -100,7 +106,7 @@ func (r *UnionTeamServiceAccountsReconciler) Reconcile(ctx context.Context, req 
 		if controllerutil.ContainsFinalizer(utsa, unionFinalizer) {
 			log.Info("Running finalizer cleanup", "project", utsa.Spec.Project, "domain", utsa.Spec.Domain)
 
-			if err := saReconciler.CleanupAllResources(ctx, unionEnv); err != nil {
+			if err := istioReconciler.CleanupAllResources(ctx, utsa); err != nil {
 				log.Error(err, "Failed to run finalizer cleanup")
 				return ctrl.Result{}, err
 			}
@@ -127,6 +133,9 @@ func (r *UnionTeamServiceAccountsReconciler) Reconcile(ctx context.Context, req 
 
 	// Normal reconciliation.
 	if err := saReconciler.CreateOrUpdateServiceAccounts(ctx, unionEnv, serviceAccounts); err != nil {
+		return ctrl.Result{}, err
+	}
+	if err := saReconciler.CleanupRemovedServiceAccounts(ctx, unionEnv, serviceAccounts); err != nil {
 		return ctrl.Result{}, err
 	}
 	if err := istioReconciler.EnsureExternalHosts(ctx, serviceAccounts); err != nil {
