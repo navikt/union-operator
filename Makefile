@@ -117,7 +117,8 @@ config:
 	@echo "Fetching manager config from cluster..."
 	@kubectl --context dev-union-restricted get configmap manager-config -n union-operator-system -o jsonpath='{.data.config\.yaml}' > .manager-config.yaml
 	@echo "Manager config saved to .manager-config.yaml"
-	@sed -i '' 's/onpremHostMapFilePath: .*/onpremHostMapFilePath: ".onprem-hostmap.yaml"/g' .manager-config.yaml
+	@sed -i.bak 's/onpremHostMapFilePath: .*/onpremHostMapFilePath: ".onprem-hostmap.yaml"/g' .manager-config.yaml
+	@rm -f .manager-config.yaml.bak
 
 	@echo "Fetching onprem hostmap cluster..."
 	@kubectl --context dev-union-restricted get configmap onprem-hostmap -n union-operator-system -o jsonpath='{.data.onprem-hostmap\.yaml}' > .onprem-hostmap.yaml

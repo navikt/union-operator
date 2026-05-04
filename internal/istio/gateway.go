@@ -52,7 +52,7 @@ func newGateway(host string) *istionetworking.Gateway {
 		},
 		Spec: istionetworkingmodels.Gateway{
 			Selector: map[string]string{
-				"app": istioGatewaySelector,
+				"istio": istioGatewaySelector,
 			},
 			Servers: []*istionetworkingmodels.Server{
 				{

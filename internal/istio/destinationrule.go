@@ -77,6 +77,7 @@ func newDestinationRuleFromGateway(sa uniontypes.ServiceAccount, host datanavnov
 			},
 			Tls: &istionetworkingmodels.ClientTLSSettings{
 				Mode: istionetworkingmodels.ClientTLSSettings_SIMPLE,
+				Sni:  host.Host,
 			},
 		})
 }
