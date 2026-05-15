@@ -28,3 +28,10 @@ go.work
 
 # Kubeconfig might contain secrets
 *.kubeconfig
+
+# Downloaded test dependencies
+.testdata/
+
+# Configuration files
+.onprem-hostmap.yaml
+.manager-config.yaml

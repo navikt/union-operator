@@ -8,6 +8,10 @@ else
 GOBIN=$(shell go env GOBIN)
 endif
 
+# GOTOOLCHAIN ensures we use the exact Go toolchain version specified in go.mod,
+# avoiding version mismatch warnings when the system Go differs from the project version.
+export GOTOOLCHAIN ?= go$(shell sed -n 's/^go //p' go.mod)
+
 # CONTAINER_TOOL defines the container tool to be used for building images.
 # Be aware that the target commands are only tested with Docker which is
 # scaffolded by default. However, you might want to replace it to use other
@@ -108,8 +112,21 @@ lint-config: golangci-lint ## Verify golangci-lint linter configuration
 build: manifests generate fmt vet ## Build manager binary.
 	go build -o bin/manager cmd/main.go
 
+.PHONY: config
+config:
+	@echo "Fetching manager config from cluster..."
+	@kubectl --context dev-union-restricted get configmap manager-config -n union-operator-system -o jsonpath='{.data.config\.yaml}' > .manager-config.yaml
+	@echo "Manager config saved to .manager-config.yaml"
+	@sed -i.bak 's/onpremHostMapFilePath: .*/onpremHostMapFilePath: ".onprem-hostmap.yaml"/g' .manager-config.yaml
+	@rm -f .manager-config.yaml.bak
+
+	@echo "Fetching onprem hostmap cluster..."
+	@kubectl --context dev-union-restricted get configmap onprem-hostmap -n union-operator-system -o jsonpath='{.data.onprem-hostmap\.yaml}' > .onprem-hostmap.yaml
+	@echo "Onprem hostmap saved to .onprem-hostmap.yaml"
+
 .PHONY: run
 run: manifests generate fmt vet ## Run a controller from your host.
+	MANAGER_CONFIG_PATH=".manager-config.yaml" \
 	go run ./cmd/main.go
 
 # If you wish to build the manager image targeting other platforms you can use the --platform flag.
@@ -117,7 +134,7 @@ run: manifests generate fmt vet ## Run a controller from your host.
 # More info: https://docs.docker.com/develop/develop-images/build_enhancements/
 .PHONY: docker-build
 docker-build: ## Build docker image with the manager.
-	$(CONTAINER_TOOL) build -t ${IMG} .
+	$(CONTAINER_TOOL) build --platform=linux/amd64 -t ${IMG} .
 
 .PHONY: docker-push
 docker-push: ## Push docker image with the manager.
@@ -195,6 +212,8 @@ GOLANGCI_LINT = $(LOCALBIN)/golangci-lint
 KUSTOMIZE_VERSION ?= v5.8.1
 CONTROLLER_TOOLS_VERSION ?= v0.20.1
 
+ISTIO_VERSION ?= $(shell go list -m -f '{{.Version}}' istio.io/client-go 2>/dev/null)
+
 #ENVTEST_VERSION is the version of controller-runtime release branch to fetch the envtest setup script (i.e. release-0.20)
 ENVTEST_VERSION ?= $(shell v='$(call gomodver,sigs.k8s.io/controller-runtime)'; \
   [ -n "$$v" ] || { echo "Set ENVTEST_VERSION manually (controller-runtime replace has no tag)" >&2; exit 1; }; \
@@ -238,6 +257,16 @@ $(GOLANGCI_LINT): $(LOCALBIN)
 		$(GOLANGCI_LINT) custom --destination $(LOCALBIN) --name golangci-lint-custom && \
 		mv -f $(LOCALBIN)/golangci-lint-custom $(GOLANGCI_LINT); \
 	} || true
+
+ISTIO_CRDS_DIR ?= $(shell pwd)/.testdata/crds
+
+.PHONY: istio-crds
+istio-crds: $(ISTIO_CRDS_DIR) ## Download Istio CRDs for envtest.
+$(ISTIO_CRDS_DIR):
+	@mkdir -p "$(ISTIO_CRDS_DIR)"
+	@echo "Downloading Istio CRDs ($(ISTIO_VERSION))..."
+	@curl -sSL "https://raw.githubusercontent.com/istio/api/$(ISTIO_VERSION)/kubernetes/customresourcedefinitions.gen.yaml" \
+		-o "$(ISTIO_CRDS_DIR)/istio-crds.yaml"
 
 # go-install-tool will 'go install' any package with custom target and name of binary, if it doesn't exist
 # $1 - target path with name of binary
