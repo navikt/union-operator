@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	datanavnov1 "github.com/navikt/union-operator/api/v1"
+	datanavnov1 "github.com/navikt/union-operator/api/v1alpha1"
 	uniontypes "github.com/navikt/union-operator/internal/types"
 	istionetworkingmodels "istio.io/api/networking/v1beta1"
 	istionetworking "istio.io/client-go/pkg/apis/networking/v1beta1"

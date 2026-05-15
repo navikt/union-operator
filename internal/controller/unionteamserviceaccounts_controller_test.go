@@ -28,7 +28,7 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	datanavnov1 "github.com/navikt/union-operator/api/v1"
+	datanavnov1 "github.com/navikt/union-operator/api/v1alpha1"
 )
 
 var _ = Describe("UnionTeamServiceAccounts Controller", func() {

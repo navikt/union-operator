@@ -26,7 +26,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
-	datanavnov1 "github.com/navikt/union-operator/api/v1"
+	datanavnov1 "github.com/navikt/union-operator/api/v1alpha1"
 	"github.com/navikt/union-operator/internal/istio"
 	"github.com/navikt/union-operator/internal/serviceaccount"
 	uniontypes "github.com/navikt/union-operator/internal/types"

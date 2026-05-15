@@ -36,7 +36,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	iam "github.com/nais/liberator/pkg/apis/iam.cnrm.cloud.google.com/v1beta1"
-	datanavnov1 "github.com/navikt/union-operator/api/v1"
+	datanavnov1 "github.com/navikt/union-operator/api/v1alpha1"
 	istionetworking "istio.io/client-go/pkg/apis/networking/v1beta1"
 	istiosecurity "istio.io/client-go/pkg/apis/security/v1beta1"
 	// +kubebuilder:scaffold:imports

@@ -3,7 +3,7 @@ package istio
 import (
 	"context"
 
-	datanavnov1 "github.com/navikt/union-operator/api/v1"
+	datanavnov1 "github.com/navikt/union-operator/api/v1alpha1"
 	uniontypes "github.com/navikt/union-operator/internal/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )

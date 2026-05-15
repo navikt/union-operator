@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	datanavnov1 "github.com/navikt/union-operator/api/v1"
+	datanavnov1 "github.com/navikt/union-operator/api/v1alpha1"
 	uniontypes "github.com/navikt/union-operator/internal/types"
 	istiosecuritymodels "istio.io/api/security/v1beta1"
 	istiosecurity "istio.io/client-go/pkg/apis/security/v1beta1"
