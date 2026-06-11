@@ -165,7 +165,7 @@ func (r *Reconciler) cleanupInternalHosts(ctx context.Context, utsas datanavnov1
 
 func containsHost(existing *istiosecurity.AuthorizationPolicy, internalAllowlist []datanavnov1.Host) bool {
 	for _, host := range internalAllowlist {
-		if existing.Labels["host"] == host.Host {
+		if existing.Labels["parent-host"] == host.Host {
 			return true
 		}
 	}

@@ -50,19 +50,19 @@ func (r *Reconciler) EnsureExternalHosts(ctx context.Context, serviceAccounts []
 func (r *Reconciler) EnsureAuthorizationPolicies(ctx context.Context, serviceAccounts []uniontypes.ServiceAccount) error {
 	for _, sa := range serviceAccounts {
 		for _, host := range sa.ExternalAllowlist {
-			if err := r.ensureAuthorizationPolicyForHost(ctx, sa, &host, httpsProtocol, hostTypeLabelExternal); err != nil {
+			if err := r.ensureAuthorizationPolicyForHost(ctx, sa, &host, nil, httpsProtocol, hostTypeLabelExternal); err != nil {
 				return err
 			}
 		}
 
 		for _, host := range sa.InternalAllowlist {
 			if hostData, ok := r.OnpremHosts[host.Host]; ok {
-				if err := r.ensureAuthorizationPolicyForHost(ctx, sa, &host, hostData.Protocol, hostTypeLabelInternal); err != nil {
+				if err := r.ensureAuthorizationPolicyForHost(ctx, sa, &host, nil, hostData.Protocol, hostTypeLabelInternal); err != nil {
 					return err
 				}
 				for _, vip := range hostData.VIP {
 					vipHost := datanavnov1.Host{Host: vip}
-					if err := r.ensureAuthorizationPolicyForHost(ctx, sa, &vipHost, hostData.Protocol, hostTypeLabelInternal); err != nil {
+					if err := r.ensureAuthorizationPolicyForHost(ctx, sa, &vipHost, &host.Host, hostData.Protocol, hostTypeLabelInternal); err != nil {
 						return err
 					}
 				}

@@ -15,8 +15,13 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-func (r *Reconciler) ensureAuthorizationPolicyForHost(ctx context.Context, sa uniontypes.ServiceAccount, host *datanavnov1.Host, protocol, hostTypeLabel string) error {
+func (r *Reconciler) ensureAuthorizationPolicyForHost(ctx context.Context, sa uniontypes.ServiceAccount, host *datanavnov1.Host, parentHost *string, protocol, hostTypeLabel string) error {
 	log := logf.FromContext(ctx)
+
+	parent := host.Host
+	if parentHost != nil {
+		parent = *parentHost
+	}
 
 	apList := &istiosecurity.AuthorizationPolicyList{}
 	err := r.List(ctx, apList, inEgressNamespace(), client.MatchingLabels{
@@ -24,16 +29,18 @@ func (r *Reconciler) ensureAuthorizationPolicyForHost(ctx context.Context, sa un
 		"domain":          sa.Domain,
 		"service-account": sa.Name,
 		"host":            host.Host,
+		"parent-host":     parent,
 	})
 	if err != nil {
 		return err
 	}
 
 	if len(apList.Items) < 1 {
-		ap, err := newAuthorizationPolicy(sa, host, protocol, hostTypeLabel)
+		ap, err := newAuthorizationPolicy(sa, host, parent, protocol, hostTypeLabel)
 		if err != nil {
 			return err
 		}
+
 		if err = r.Create(ctx, ap); err != nil {
 			if apierrors.IsAlreadyExists(err) {
 				// Stale cache: the AuthorizationPolicy exists but the label-index
@@ -48,7 +55,7 @@ func (r *Reconciler) ensureAuthorizationPolicyForHost(ctx context.Context, sa un
 	return nil
 }
 
-func newAuthorizationPolicy(sa uniontypes.ServiceAccount, host *datanavnov1.Host, protocol, hostTypeLabel string) (*istiosecurity.AuthorizationPolicy, error) {
+func newAuthorizationPolicy(sa uniontypes.ServiceAccount, host *datanavnov1.Host, parentHost, protocol, hostTypeLabel string) (*istiosecurity.AuthorizationPolicy, error) {
 	var when []*istiosecuritymodels.Condition
 	var to []*istiosecuritymodels.Rule_To
 	switch strings.ToUpper(protocol) {
@@ -82,6 +89,7 @@ func newAuthorizationPolicy(sa uniontypes.ServiceAccount, host *datanavnov1.Host
 				"service-account": sa.Name,
 				"host":            host.Host,
 				"host-type":       hostTypeLabel,
+				"parent-host":     parentHost,
 			},
 		},
 		Spec: istiosecuritymodels.AuthorizationPolicy{
