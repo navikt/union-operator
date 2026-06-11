@@ -46,7 +46,7 @@ kind: Kustomization
 images:
 - name: controller
   newName: europe-west1-docker.pkg.dev/nav-data-images-prod/dataplattform-infra/union-operator
-  newTag: v14
+  newTag: v15
 
 # Uncomment the patches line if you enable Metrics and CertManager
 # [METRICS-WITH-CERTS] To enable metrics protected with certManager, uncomment the following line.
