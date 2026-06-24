@@ -39,7 +39,7 @@ import (
 	datanavnov1 "github.com/navikt/union-operator/api/v1alpha1"
 	"github.com/navikt/union-operator/internal/controller"
 	uniontypes "github.com/navikt/union-operator/internal/types"
-
+	"github.com/navikt/union-operator/internal/persist"
 	iam "github.com/nais/liberator/pkg/apis/iam.cnrm.cloud.google.com/v1beta1"
 	istio "istio.io/client-go/pkg/apis/networking/v1beta1"
 	istiosecurity "istio.io/client-go/pkg/apis/security/v1beta1"
@@ -207,11 +207,18 @@ func main() {
 		os.Exit(1)
 	}
 
+	persister := persist.NewPersister(persist.BigQuery{
+		ProjectID: "nav-data-union-restricted-dev",
+		DatasetID: "allowlist_history",
+		TableID:   "union_allowlists",
+	})
+
 	if err := (&controller.UnionTeamServiceAccountsReconciler{
 		Client:      mgr.GetClient(),
 		Scheme:      mgr.GetScheme(),
 		OnpremHosts: onpremHosts,
 		UnionConfig: unionConfig,
+		Persister:   persister,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "Failed to create controller", "controller", "UnionTeamServiceAccounts")
 		os.Exit(1)
