@@ -1,0 +1,32 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: ensure-unique-union-config
+  annotations:
+    policies.kyverno.io/title: "Enforce Unique Union Config"
+    policies.kyverno.io/description: "Blocks the creation or modification of UnionTeamServiceAccounts resources if there already exists another UnionTeamServiceAccounts resource for the same Union project and domain."
+spec:
+  validationFailureAction: Enforce
+  background: false # Must be false since API lookup context cannot run during background scans
+  rules:
+    - name: check-duplicate-union-config
+      match:
+        any:
+          - resources:
+              kinds:
+                - UnionTeamServiceAccounts
+      context:
+        # 1. Query the Kubernetes API for all existing resources of kind UnionTeamServiceAccounts
+        - name: existingUnionConfigs
+          apiCall:
+            urlPath: /apis/data.nav.no/v1alpha1/unionteamserviceaccounts
+            jmesPath: "items"
+      validate:
+        message: "The domain '{{ request.object.spec.domain }}' for project '{{ request.object.spec.project }}' already has a UnionTeamServiceAccounts resource."
+        deny:
+          conditions:
+            any:
+              # 2. Filter existing items where the domain and project match AND the metadata.name is different
+              - key: "{{ existingUnionConfigs[?spec.domain=='{{ request.object.spec.domain }}' && spec.project=='{{ request.object.spec.project }}' && metadata.name!='{{ request.object.metadata.name }}'] | length(@) }}"
+                operator: GreaterThan
+                value: 0
