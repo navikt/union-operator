@@ -3,7 +3,8 @@ kind: Kustomization
 resources:
   - ../../base/default
   - kyvernopolicy.yaml
-  - service-account-patch.yaml
+patches:
+  - path: service-account-patch.yaml
 configMapGenerator:
 - files:
   - config.yaml=config-dev.yaml
