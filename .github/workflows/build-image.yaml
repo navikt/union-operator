@@ -1,0 +1,57 @@
+name: Build and push operator image and update deployment image tag 
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  build:
+    name: Build and push operator image 
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - id: auth
+        name: Authenticate with Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          token_format: access_token
+          workload_identity_provider: projects/430580391891/locations/global/workloadIdentityPools/ci-dataplattform/providers/ci-dataplattform
+          service_account: ci-dataplattform@nav-data-management-prod.iam.gserviceaccount.com
+
+      - uses: docker/login-action@v3
+        name: Login to Google Artifact Registry
+        with:
+          registry: europe-west1-docker.pkg.dev
+          username: oauth2accesstoken
+          password: ${{ steps.auth.outputs.access_token }}
+
+      - name: Create image tag
+        id: image_tag
+        run: echo "IMAGE_TAG=$(date +%Y%m%d%H%M%S)" >> $GITHUB_ENV
+
+      - name: Build and push v2 base image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          push: true
+          tags: |
+            europe-west1-docker.pkg.dev/nav-data-images-prod/dataplattform-infra/union-operator:${{ env.IMAGE_TAG }}
+      
+      - name: Update kustomization.yaml with new image tag
+        working-directory: config/base/default
+        run: |
+          kustomize edit set image controller=europe-west1-docker.pkg.dev/nav-data-images-prod/dataplattform-infra/union-operator:${{ env.IMAGE_TAG }}
+      
+          git config --global user.name ${{ github.actor }}
+          git config --global user.email "${{ github.actor }}@users.noreply.github.com"
+          git add kustomization.yaml
+          git commit -m "Update image tag to ${{ env.IMAGE_TAG }}"
+          git push origin main
