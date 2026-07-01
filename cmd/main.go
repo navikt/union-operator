@@ -208,9 +208,9 @@ func main() {
 	}
 
 	persister := persist.NewPersister(persist.BigQuery{
-		ProjectID: unionConfig.HistoryPersistance.Project,
-		DatasetID: unionConfig.HistoryPersistance.BigqueryDataset,
-		TableID:   unionConfig.HistoryPersistance.TableName,
+		ProjectID: unionConfig.AllowlistHistory.Project,
+		DatasetID: unionConfig.AllowlistHistory.BigqueryDataset,
+		TableID:   unionConfig.AllowlistHistory.TableName,
 	})
 
 	if err := (&controller.UnionTeamServiceAccountsReconciler{
