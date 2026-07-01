@@ -37,7 +37,7 @@ jobs:
         id: image_tag
         run: echo "IMAGE_TAG=$(date +%Y%m%d%H%M%S)" >> $GITHUB_ENV
 
-      - name: Build and push v2 base image
+      - name: Build and push operator image
         uses: docker/build-push-action@v4
         with:
           context: .
