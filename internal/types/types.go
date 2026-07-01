@@ -18,10 +18,17 @@ const (
 )
 
 type UnionDataplaneConfig struct {
-	GCPProjectName         string `yaml:"gcpProjectName"`
-	FastRegistrationBucket string `yaml:"fastRegistrationBucket"`
-	DataBucket             string `yaml:"dataBucket"`
-	OnpremHostMapFilePath  string `yaml:"onpremHostMapFilePath"`
+	GCPProjectName         string                 `yaml:"gcpProjectName"`
+	FastRegistrationBucket string                 `yaml:"fastRegistrationBucket"`
+	DataBucket             string                 `yaml:"dataBucket"`
+	OnpremHostMapFilePath  string                 `yaml:"onpremHostMapFilePath"`
+	AllowlistHistory       AllowlistHistoryConfig `yaml:"allowlistHistory"`
+}
+
+type AllowlistHistoryConfig struct {
+	Project         string `yaml:"project"`
+	BigqueryDataset string `yaml:"bigqueryDataset"`
+	TableName       string `yaml:"tableName"`
 }
 
 func (c *UnionDataplaneConfig) LoadFromFile(path string) error {

@@ -36,11 +36,11 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
+	iam "github.com/nais/liberator/pkg/apis/iam.cnrm.cloud.google.com/v1beta1"
 	datanavnov1 "github.com/navikt/union-operator/api/v1alpha1"
 	"github.com/navikt/union-operator/internal/controller"
-	uniontypes "github.com/navikt/union-operator/internal/types"
 	"github.com/navikt/union-operator/internal/persist"
-	iam "github.com/nais/liberator/pkg/apis/iam.cnrm.cloud.google.com/v1beta1"
+	uniontypes "github.com/navikt/union-operator/internal/types"
 	istio "istio.io/client-go/pkg/apis/networking/v1beta1"
 	istiosecurity "istio.io/client-go/pkg/apis/security/v1beta1"
 	// +kubebuilder:scaffold:imports
@@ -208,9 +208,9 @@ func main() {
 	}
 
 	persister := persist.NewPersister(persist.BigQuery{
-		ProjectID: "nav-data-union-restricted-dev",
-		DatasetID: "allowlist_history",
-		TableID:   "union_allowlists",
+		ProjectID: unionConfig.HistoryPersistance.Project,
+		DatasetID: unionConfig.HistoryPersistance.BigqueryDataset,
+		TableID:   unionConfig.HistoryPersistance.TableName,
 	})
 
 	if err := (&controller.UnionTeamServiceAccountsReconciler{

@@ -2,3 +2,7 @@ gcpProjectName: "nav-data-union-restricted-prod"
 fastRegistrationBucket: "restricted-prod-fast-registration"
 dataBucket: "restricted-prod-data"
 onpremHostMapFilePath: "/etc/config/onprem-hostmap.yaml"
+allowlistHistory:
+  project: "nav-data-union-restricted-prod"
+  bigqueryDataset: "allowlist_history"
+  tableName: "union_allowlists"
