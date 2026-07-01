@@ -46,4 +46,4 @@ kind: Kustomization
 images:
 - name: controller
   newName: europe-west1-docker.pkg.dev/nav-data-images-prod/dataplattform-infra/union-operator
-  newTag: "20260701083149"
+  newTag: "20260701095822"
