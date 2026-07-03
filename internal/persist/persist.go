@@ -68,12 +68,16 @@ func createAllowlistTableIfNotExists(ctx context.Context, bqClient *bigquery.Cli
 	return err
 }
 
-func (p *Persister) PersistAllowlist(ctx context.Context, utsa *datanavnov1.UnionTeamServiceAccounts) error {
+func (p *Persister) PersistAllowlist(ctx context.Context, utsa *datanavnov1.UnionTeamServiceAccounts) (err error) {
 	bqClient, err := bigquery.NewClient(ctx, p.BigQuerySink.ProjectID)
 	if err != nil {
 		return err
 	}
-	defer bqClient.Close()
+	defer func() {
+		if cerr := bqClient.Close(); cerr != nil && err == nil {
+			err = cerr
+		}
+	}()
 
 	if err := createAllowlistTableIfNotExists(ctx, bqClient, p.BigQuerySink.ProjectID, p.BigQuerySink.DatasetID, p.BigQuerySink.TableID); err != nil {
 		return err
@@ -86,36 +90,31 @@ func (p *Persister) PersistAllowlist(ctx context.Context, utsa *datanavnov1.Unio
 		Environment: utsa.Spec.Domain,
 	}
 
-	if githubActor, ok := utsa.ObjectMeta.Annotations["data.nav.no/github.actor"]; ok {
+	if githubActor, ok := utsa.Annotations["data.nav.no/github.actor"]; ok {
 		tableEntry.GithubActor = githubActor
 	}
 
-	if githubRepo, ok := utsa.ObjectMeta.Annotations["data.nav.no/github.repository"]; ok {
+	if githubRepo, ok := utsa.Annotations["data.nav.no/github.repository"]; ok {
 		tableEntry.GithubRepo = githubRepo
 	}
 
-	if githubHash, ok := utsa.ObjectMeta.Annotations["data.nav.no/github.sha"]; ok {
+	if githubHash, ok := utsa.Annotations["data.nav.no/github.sha"]; ok {
 		tableEntry.GithubHash = githubHash
 	}
 	tableEntry.CreatedTimestamp = bigquery.NullTimestamp{Timestamp: utsa.CreationTimestamp.Time, Valid: true}
 
 	for _, sa := range utsa.Spec.ServiceAccounts {
-
-		tableEntry, err := p.extractAllowlistForServiceAccount(tableEntry, sa)
-		if err != nil {
-			return err
-		}
-		err = table.Inserter().Put(ctx, tableEntry)
-		if err != nil {
+		entry := p.extractAllowlistForServiceAccount(tableEntry, sa)
+		if err := table.Inserter().Put(ctx, entry); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (p *Persister) extractAllowlistForServiceAccount(tableEntry allowListTableEntry, sa datanavnov1.UnionServiceAccount) (allowListTableEntry, error) {
-	internalAllowList := []string{}
-	externalAllowList := []string{}
+func (p *Persister) extractAllowlistForServiceAccount(tableEntry allowListTableEntry, sa datanavnov1.UnionServiceAccount) allowListTableEntry {
+	internalAllowList := make([]string, 0, len(sa.InternalAllowlist))
+	externalAllowList := make([]string, 0, len(sa.ExternalAllowlist))
 	for _, host := range sa.InternalAllowlist {
 		internalAllowList = append(internalAllowList, host.Host)
 	}
@@ -133,7 +132,7 @@ func (p *Persister) extractAllowlistForServiceAccount(tableEntry allowListTableE
 		GithubRepo:        tableEntry.GithubRepo,
 		GithubHash:        tableEntry.GithubHash,
 		CreatedTimestamp:  tableEntry.CreatedTimestamp,
-	}, nil
+	}
 }
 
 func NewPersister(sink BigQuery) *Persister {

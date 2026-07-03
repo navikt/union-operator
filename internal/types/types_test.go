@@ -71,7 +71,7 @@ func TestGoogleServiceAccountNameFormat(t *testing.T) {
 		t.Errorf("expected 5-char hex suffix, got %q in %q", suffix, got)
 	}
 	for _, c := range suffix {
-		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
 			t.Errorf("suffix %q contains non-hex character %q", suffix, c)
 		}
 	}

@@ -8,6 +8,8 @@ import (
 	istiosecuritymodels "istio.io/api/security/v1beta1"
 )
 
+const testHostVG = "vg.no"
+
 func testServiceAccount() uniontypes.ServiceAccount {
 	return uniontypes.ServiceAccount{
 		UnionServiceAccount: datanavnov1.UnionServiceAccount{Name: "my-sa"},
@@ -20,7 +22,7 @@ func testServiceAccount() uniontypes.ServiceAccount {
 
 func TestNewAuthorizationPolicyHTTPS(t *testing.T) {
 	sa := testServiceAccount()
-	host := &datanavnov1.Host{Host: "vg.no"}
+	host := &datanavnov1.Host{Host: testHostVG}
 
 	ap, err := newAuthorizationPolicy(sa, host, host.Host, "HTTPS", hostTypeLabelExternal)
 	if err != nil {
@@ -42,10 +44,10 @@ func TestNewAuthorizationPolicyHTTPS(t *testing.T) {
 	if ap.Labels["service-account"] != "my-sa" {
 		t.Errorf("expected label service-account=my-sa, got %q", ap.Labels["service-account"])
 	}
-	if ap.Labels["host"] != "vg.no" {
+	if ap.Labels["host"] != testHostVG {
 		t.Errorf("expected label host=vg.no, got %q", ap.Labels["host"])
 	}
-	if ap.Labels["parent-host"] != "vg.no" {
+	if ap.Labels["parent-host"] != testHostVG {
 		t.Errorf("expected label parent-host=vg.no, got %q", ap.Labels["parent-host"])
 	}
 	if ap.Labels["host-type"] != hostTypeLabelExternal {
@@ -69,7 +71,7 @@ func TestNewAuthorizationPolicyHTTPS(t *testing.T) {
 	if len(rule.To) != 1 {
 		t.Fatalf("expected 1 To rule, got %d", len(rule.To))
 	}
-	if len(rule.To[0].Operation.Hosts) != 1 || rule.To[0].Operation.Hosts[0] != "vg.no" {
+	if len(rule.To[0].Operation.Hosts) != 1 || rule.To[0].Operation.Hosts[0] != testHostVG {
 		t.Errorf("expected To.Hosts=[vg.no], got %v", rule.To[0].Operation.Hosts)
 	}
 	if len(rule.To[0].Operation.Paths) != 0 {
@@ -129,7 +131,7 @@ func TestNewAuthorizationPolicyTCP(t *testing.T) {
 // matching is case-insensitive, since the switch uses strings.ToUpper.
 func TestNewAuthorizationPolicyProtocolCaseInsensitive(t *testing.T) {
 	sa := testServiceAccount()
-	host := &datanavnov1.Host{Host: "vg.no"}
+	host := &datanavnov1.Host{Host: testHostVG}
 
 	for _, proto := range []string{"https", "Https", "HTTPS"} {
 		_, err := newAuthorizationPolicy(sa, host, host.Host, proto, hostTypeLabelExternal)

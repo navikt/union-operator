@@ -22,7 +22,7 @@ func (r *Reconciler) EnsureExternalHosts(ctx context.Context, serviceAccounts []
 				return err
 			}
 
-			if err := r.ensureVirtualServiceForHost(ctx, sa, &host); err != nil {
+			if err := r.ensureVirtualServiceForHost(ctx, &host); err != nil {
 				return err
 			}
 
@@ -38,7 +38,7 @@ func (r *Reconciler) EnsureExternalHosts(ctx context.Context, serviceAccounts []
 				continue
 			}
 
-			if err := r.createServiceEntry(ctx, sa, host); err != nil {
+			if err := r.createServiceEntry(ctx, host); err != nil {
 				return err
 			}
 		}

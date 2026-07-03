@@ -4,12 +4,11 @@ import (
 	"testing"
 
 	datanavnov1 "github.com/navikt/union-operator/api/v1alpha1"
-	uniontypes "github.com/navikt/union-operator/internal/types"
 )
 
 func TestNewVirtualServiceForHost(t *testing.T) {
 	host := datanavnov1.Host{Host: "vg.no"}
-	vs := newVirtualServiceForHost(uniontypes.ServiceAccount{}, &host)
+	vs := newVirtualServiceForHost(&host)
 
 	if vs.Name != host.Name() {
 		t.Errorf("expected name %q, got %q", host.Name(), vs.Name)
@@ -77,7 +76,7 @@ func TestNewVirtualServiceForHost(t *testing.T) {
 func TestSubsetNameConsistency(t *testing.T) {
 	host := datanavnov1.Host{Host: "vg.no"}
 	dr := newDestinationRuleToGateway(host)
-	vs := newVirtualServiceForHost(uniontypes.ServiceAccount{}, &host)
+	vs := newVirtualServiceForHost(&host)
 
 	drSubset := dr.Spec.Subsets[0].Name
 	vsSubset := vs.Spec.Http[0].Route[0].Destination.Subset
