@@ -12,4 +12,6 @@ const (
 	tcpProtocol            = "TCP"
 	hostTypeLabelExternal  = "external"
 	hostTypeLabelInternal  = "internal"
+	managedByLabel         = "app.kubernetes.io/managed-by"
+	managedByValue         = "union-operator"
 )

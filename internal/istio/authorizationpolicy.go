@@ -90,6 +90,7 @@ func newAuthorizationPolicy(sa uniontypes.ServiceAccount, host *datanavnov1.Host
 				"host":            host.Host,
 				"host-type":       hostTypeLabel,
 				"parent-host":     parentHost,
+				managedByLabel:    managedByValue,
 			},
 		},
 		Spec: istiosecuritymodels.AuthorizationPolicy{

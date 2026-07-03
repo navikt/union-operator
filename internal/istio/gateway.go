@@ -49,6 +49,9 @@ func newGateway(host string) *istionetworking.Gateway {
 		ObjectMeta: v1.ObjectMeta{
 			Name:      gatewayName,
 			Namespace: EgressNamespace,
+			Labels: map[string]string{
+				managedByLabel: managedByValue,
+			},
 		},
 		Spec: istionetworkingmodels.Gateway{
 			Selector: map[string]string{

@@ -41,7 +41,8 @@ func newVirtualServiceForHost(sa uniontypes.ServiceAccount, host *datanavnov1.Ho
 			Name:      host.Name(),
 			Namespace: EgressNamespace,
 			Labels: map[string]string{
-				"host": host.Host,
+				"host":         host.Host,
+				managedByLabel: managedByValue,
 			},
 		},
 		Spec: istionetworkingmodels.VirtualService{

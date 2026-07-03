@@ -16,8 +16,9 @@ import (
 func (r *Reconciler) ensureDestinationRule(ctx context.Context, sa uniontypes.ServiceAccount, host datanavnov1.Host) error {
 	dr := &istionetworking.DestinationRuleList{}
 	err := r.List(ctx, dr, inEgressNamespace(), client.MatchingLabels{
-		"host": host.Host,
-		"type": egressToGatewayLabel,
+		"host":         host.Host,
+		"type":         egressToGatewayLabel,
+		managedByLabel: managedByValue,
 	})
 	if err != nil {
 		return err
@@ -30,8 +31,9 @@ func (r *Reconciler) ensureDestinationRule(ctx context.Context, sa uniontypes.Se
 	}
 
 	err = r.List(ctx, dr, inEgressNamespace(), client.MatchingLabels{
-		"host": host.Host,
-		"type": egressFromGatewayLabel,
+		"host":         host.Host,
+		"type":         egressFromGatewayLabel,
+		managedByLabel: managedByValue,
 	})
 	if err != nil {
 		return err
@@ -88,8 +90,9 @@ func newDestinationRule(sa uniontypes.ServiceAccount, name, gatewayLabel, target
 			Name:      name,
 			Namespace: EgressNamespace,
 			Labels: map[string]string{
-				"host": host.Host,
-				"type": gatewayLabel,
+				"host":         host.Host,
+				"type":         gatewayLabel,
+				managedByLabel: managedByValue,
 			},
 		},
 		Spec: istionetworkingmodels.DestinationRule{

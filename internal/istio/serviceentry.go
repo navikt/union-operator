@@ -35,7 +35,8 @@ func newHTTPSServiceEntry(sa uniontypes.ServiceAccount, host datanavnov1.Host) *
 			Name:      host.Name(),
 			Namespace: EgressNamespace,
 			Labels: map[string]string{
-				"host": host.Host,
+				"host":         host.Host,
+				managedByLabel: managedByValue,
 			},
 		},
 		Spec: istionetworkingmodels.ServiceEntry{
