@@ -110,7 +110,7 @@ func destinationRuleObjectMeta(name, gatewayLabel string, host datanavnov1.Host)
 	return v1.ObjectMeta{
 		Name:      name,
 		Namespace: EgressNamespace,
-		Labels:    map[string]string{"host": host.Host, "type": gatewayLabel, "managedByLabel": managedByValue},
+		Labels:    map[string]string{"host": host.Host, "type": gatewayLabel, managedByLabel: managedByValue},
 	}
 }
 

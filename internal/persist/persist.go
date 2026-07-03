@@ -9,6 +9,13 @@ import (
 	"google.golang.org/api/googleapi"
 )
 
+// AllowlistPersister is the interface the controller depends on for persisting
+// allowlist history. Using an interface allows tests to inject a no-op without
+// requiring real GCP credentials.
+type AllowlistPersister interface {
+	PersistAllowlist(ctx context.Context, utsa *datanavnov1.UnionTeamServiceAccounts) error
+}
+
 type Persister struct {
 	BigQuerySink BigQuery
 }
@@ -61,18 +68,18 @@ func createAllowlistTableIfNotExists(ctx context.Context, bqClient *bigquery.Cli
 	return err
 }
 
-func (p *Persister) PersistAllowlist(ctx context.Context, sink BigQuery, utsa *datanavnov1.UnionTeamServiceAccounts) error {
-	bqClient, err := bigquery.NewClient(ctx, sink.ProjectID)
+func (p *Persister) PersistAllowlist(ctx context.Context, utsa *datanavnov1.UnionTeamServiceAccounts) error {
+	bqClient, err := bigquery.NewClient(ctx, p.BigQuerySink.ProjectID)
 	if err != nil {
 		return err
 	}
 	defer bqClient.Close()
 
-	if err := createAllowlistTableIfNotExists(ctx, bqClient, sink.ProjectID, sink.DatasetID, sink.TableID); err != nil {
+	if err := createAllowlistTableIfNotExists(ctx, bqClient, p.BigQuerySink.ProjectID, p.BigQuerySink.DatasetID, p.BigQuerySink.TableID); err != nil {
 		return err
 	}
 
-	table := bqClient.DatasetInProject(sink.ProjectID, sink.DatasetID).Table(sink.TableID)
+	table := bqClient.DatasetInProject(p.BigQuerySink.ProjectID, p.BigQuerySink.DatasetID).Table(p.BigQuerySink.TableID)
 
 	tableEntry := allowListTableEntry{
 		Team:        utsa.Spec.Project,

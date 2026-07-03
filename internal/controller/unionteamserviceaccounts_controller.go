@@ -28,10 +28,9 @@ import (
 
 	datanavnov1 "github.com/navikt/union-operator/api/v1alpha1"
 	"github.com/navikt/union-operator/internal/istio"
+	"github.com/navikt/union-operator/internal/persist"
 	"github.com/navikt/union-operator/internal/serviceaccount"
 	uniontypes "github.com/navikt/union-operator/internal/types"
-	"github.com/davecgh/go-spew/spew"
-	"github.com/navikt/union-operator/internal/persist"
 )
 
 const (
@@ -44,7 +43,7 @@ type UnionTeamServiceAccountsReconciler struct {
 	Scheme      *runtime.Scheme
 	OnpremHosts uniontypes.OnpremHostMap
 	UnionConfig *uniontypes.UnionDataplaneConfig
-	Persister   *persist.Persister
+	Persister   persist.AllowlistPersister
 }
 
 // +kubebuilder:rbac:groups=data.nav.no,resources=unionteamserviceaccounts,verbs=get;list;watch;create;update;patch;delete
@@ -87,13 +86,21 @@ func (r *UnionTeamServiceAccountsReconciler) Reconcile(ctx context.Context, req 
 		return ctrl.Result{}, err
 	}
 
+	// The API server strips TypeMeta on Get responses, so utsa.APIVersion and
+	// utsa.Kind are always empty. Derive the GVK from the scheme instead.
+	gvks, _, err := r.Scheme.ObjectKinds(utsa)
+	if err != nil || len(gvks) == 0 {
+		log.Error(err, "Failed to determine GVK for UnionTeamServiceAccounts")
+		return ctrl.Result{}, err
+	}
+
 	unionEnv := &uniontypes.UnionEnv{
 		Project:        utsa.Spec.Project,
 		Domain:         utsa.Spec.Domain,
 		GCPProjectName: r.UnionConfig.GCPProjectName,
 		UTSAOwnerReference: &uniontypes.UTSAOwnerReference{
-			APIVersion: utsa.APIVersion,
-			Kind:       utsa.Kind,
+			APIVersion: gvks[0].GroupVersion().String(),
+			Kind:       gvks[0].Kind,
 			Name:       utsa.Name,
 			UID:        utsa.UID,
 		},
@@ -135,7 +142,7 @@ func (r *UnionTeamServiceAccountsReconciler) Reconcile(ctx context.Context, req 
 	}
 
 	// Normal reconciliation.
-	if err := r.Persister.PersistAllowlist(ctx, r.Persister.BigQuerySink, utsa); err != nil {
+	if err := r.Persister.PersistAllowlist(ctx, utsa); err != nil {
 		log.Error(err, "Failed to persist allow list")
 		return ctrl.Result{}, err
 	}
@@ -167,9 +174,4 @@ func (r *UnionTeamServiceAccountsReconciler) SetupWithManager(mgr ctrl.Manager) 
 		For(&datanavnov1.UnionTeamServiceAccounts{}).
 		Named("unionteamserviceaccounts").
 		Complete(r)
-}
-
-func persistAllowList(ctx context.Context, utsa *datanavnov1.UnionTeamServiceAccounts) error {
-	spew.Dump(utsa.ObjectMeta.Annotations)
-	return nil
 }

@@ -29,7 +29,20 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	datanavnov1 "github.com/navikt/union-operator/api/v1alpha1"
+	"github.com/navikt/union-operator/internal/persist"
+	uniontypes "github.com/navikt/union-operator/internal/types"
 )
+
+// noOpPersister satisfies persist.AllowlistPersister without making any real
+// external calls, making it safe to use in unit and integration tests.
+type noOpPersister struct{}
+
+func (noOpPersister) PersistAllowlist(_ context.Context, _ *datanavnov1.UnionTeamServiceAccounts) error {
+	return nil
+}
+
+// Compile-time check.
+var _ persist.AllowlistPersister = noOpPersister{}
 
 var _ = Describe("UnionTeamServiceAccounts Controller", func() {
 	Context("When reconciling a resource", func() {
@@ -87,8 +100,10 @@ var _ = Describe("UnionTeamServiceAccounts Controller", func() {
 		It("should successfully reconcile the resource", func() {
 			By("Reconciling the created resource")
 			controllerReconciler := &UnionTeamServiceAccountsReconciler{
-				Client: k8sClient,
-				Scheme: k8sClient.Scheme(),
+				Client:      k8sClient,
+				Scheme:      k8sClient.Scheme(),
+				UnionConfig: &uniontypes.UnionDataplaneConfig{},
+				Persister:   noOpPersister{},
 			}
 
 			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
