@@ -66,6 +66,7 @@ func newVirtualServiceForHost(sa uniontypes.ServiceAccount, host *datanavnov1.Ho
 								Port: &istionetworkingmodels.PortSelector{
 									Number: 80,
 								},
+								Subset: host.Name(),
 							},
 						},
 					},

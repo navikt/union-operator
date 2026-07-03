@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	datanavnov1 "github.com/navikt/union-operator/api/v1alpha1"
-	uniontypes "github.com/navikt/union-operator/internal/types"
 	"istio.io/api/networking/v1alpha3"
 	istionetworkingmodels "istio.io/api/networking/v1beta1"
 	istionetworking "istio.io/client-go/pkg/apis/networking/v1beta1"
@@ -13,7 +12,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-func (r *Reconciler) ensureDestinationRule(ctx context.Context, sa uniontypes.ServiceAccount, host datanavnov1.Host) error {
+func (r *Reconciler) ensureDestinationRule(ctx context.Context, host datanavnov1.Host) error {
 	dr := &istionetworking.DestinationRuleList{}
 	err := r.List(ctx, dr, inEgressNamespace(), client.MatchingLabels{
 		"host":         host.Host,
@@ -25,7 +24,7 @@ func (r *Reconciler) ensureDestinationRule(ctx context.Context, sa uniontypes.Se
 	}
 
 	if len(dr.Items) < 1 {
-		if err = r.Create(ctx, newDestinationRuleToGateway(sa, host)); err != nil {
+		if err = r.Create(ctx, newDestinationRuleToGateway(host)); err != nil {
 			return err
 		}
 	}
@@ -40,7 +39,7 @@ func (r *Reconciler) ensureDestinationRule(ctx context.Context, sa uniontypes.Se
 	}
 
 	if len(dr.Items) < 1 {
-		if err = r.Create(ctx, newDestinationRuleFromGateway(sa, host)); err != nil {
+		if err = r.Create(ctx, newDestinationRuleFromGateway(host)); err != nil {
 			return err
 		}
 	}
@@ -48,9 +47,8 @@ func (r *Reconciler) ensureDestinationRule(ctx context.Context, sa uniontypes.Se
 	return nil
 }
 
-func newDestinationRuleToGateway(sa uniontypes.ServiceAccount, host datanavnov1.Host) *istionetworking.DestinationRule {
-	return newDestinationRule(
-		sa,
+func newDestinationRuleToGateway(host datanavnov1.Host) *istionetworking.DestinationRule {
+	return newDestinationRuleWithSubset(
 		fmt.Sprintf("%s-to-gateway", host.Name()),
 		egressToGatewayLabel,
 		gatewayHost,
@@ -66,9 +64,8 @@ func newDestinationRuleToGateway(sa uniontypes.ServiceAccount, host datanavnov1.
 		})
 }
 
-func newDestinationRuleFromGateway(sa uniontypes.ServiceAccount, host datanavnov1.Host) *istionetworking.DestinationRule {
+func newDestinationRuleFromGateway(host datanavnov1.Host) *istionetworking.DestinationRule {
 	return newDestinationRule(
-		sa,
 		fmt.Sprintf("%s-from-gateway", host.Name()),
 		egressFromGatewayLabel,
 		host.Host,
@@ -84,24 +81,41 @@ func newDestinationRuleFromGateway(sa uniontypes.ServiceAccount, host datanavnov
 		})
 }
 
-func newDestinationRule(sa uniontypes.ServiceAccount, name, gatewayLabel, targetHost string, host datanavnov1.Host, portTrafficPolicy *v1alpha3.TrafficPolicy_PortTrafficPolicy) *istionetworking.DestinationRule {
+func newDestinationRule(name, gatewayLabel, targetHost string, host datanavnov1.Host, portTrafficPolicy *v1alpha3.TrafficPolicy_PortTrafficPolicy) *istionetworking.DestinationRule {
 	return &istionetworking.DestinationRule{
-		ObjectMeta: v1.ObjectMeta{
-			Name:      name,
-			Namespace: EgressNamespace,
-			Labels: map[string]string{
-				"host":         host.Host,
-				"type":         gatewayLabel,
-				managedByLabel: managedByValue,
-			},
+		ObjectMeta: destinationRuleObjectMeta(name, gatewayLabel, host),
+		Spec: istionetworkingmodels.DestinationRule{
+			Host:          targetHost,
+			TrafficPolicy: portLevelTrafficPolicy(portTrafficPolicy),
 		},
+	}
+}
+
+func newDestinationRuleWithSubset(name, gatewayLabel, targetHost string, host datanavnov1.Host, portTrafficPolicy *v1alpha3.TrafficPolicy_PortTrafficPolicy) *istionetworking.DestinationRule {
+	return &istionetworking.DestinationRule{
+		ObjectMeta: destinationRuleObjectMeta(name, gatewayLabel, host),
 		Spec: istionetworkingmodels.DestinationRule{
 			Host: targetHost,
-			TrafficPolicy: &istionetworkingmodels.TrafficPolicy{
-				PortLevelSettings: []*v1alpha3.TrafficPolicy_PortTrafficPolicy{
-					portTrafficPolicy,
+			Subsets: []*istionetworkingmodels.Subset{
+				{
+					Name:          host.Name(),
+					TrafficPolicy: portLevelTrafficPolicy(portTrafficPolicy),
 				},
 			},
 		},
+	}
+}
+
+func destinationRuleObjectMeta(name, gatewayLabel string, host datanavnov1.Host) v1.ObjectMeta {
+	return v1.ObjectMeta{
+		Name:      name,
+		Namespace: EgressNamespace,
+		Labels:    map[string]string{"host": host.Host, "type": gatewayLabel, "managedByLabel": managedByValue},
+	}
+}
+
+func portLevelTrafficPolicy(p *v1alpha3.TrafficPolicy_PortTrafficPolicy) *istionetworkingmodels.TrafficPolicy {
+	return &istionetworkingmodels.TrafficPolicy{
+		PortLevelSettings: []*v1alpha3.TrafficPolicy_PortTrafficPolicy{p},
 	}
 }
