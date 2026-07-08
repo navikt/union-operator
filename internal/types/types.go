@@ -44,7 +44,6 @@ type OnpremHostMap map[string]OnpremHost
 
 type OnpremHost struct {
 	VIP      []string `json:"vip,omitempty"`
-	Port     string   `json:"port"`
 	Protocol string   `json:"protocol"`
 }
 
