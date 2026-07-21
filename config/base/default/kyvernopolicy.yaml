@@ -10,6 +10,7 @@ spec:
   background: false # Must be false since API lookup context cannot run during background scans
   rules:
     - name: check-duplicate-union-config
+      skipBackgroundRequests: true
       match:
         any:
           - resources:
@@ -20,9 +21,11 @@ spec:
         - name: existingUnionConfigs
           apiCall:
             urlPath: /apis/data.nav.no/v1alpha1/unionteamserviceaccounts
+            method: GET
             jmesPath: "items"
       validate:
         message: "The domain '{{ request.object.spec.domain }}' for project '{{ request.object.spec.project }}' already has a UnionTeamServiceAccounts resource."
+        allowExistingViolations: true
         deny:
           conditions:
             any:
