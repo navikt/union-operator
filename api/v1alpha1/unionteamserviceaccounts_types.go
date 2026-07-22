@@ -17,6 +17,7 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"fmt"
 	"strings"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -47,6 +48,8 @@ type UnionServiceAccount struct {
 	ExternalAllowlist []Host `json:"externalAllowlist,omitempty"`
 	// +optional
 	InternalAllowlist []Host `json:"internalAllowlist,omitempty"`
+	// +optional
+	CloudSQL []CloudSQLInstance `json:"cloudSQL,omitempty"`
 }
 
 type Host struct {
@@ -58,6 +61,19 @@ type Host struct {
 
 func (a Host) Name() string {
 	return strings.ReplaceAll(a.Host, ".", "-")
+}
+
+type CloudSQLInstance struct {
+	// +required
+	IP string `json:"ip"`
+}
+
+func (c CloudSQLInstance) Host() string {
+	return fmt.Sprintf("%s.cloudsql", strings.ReplaceAll(c.IP, ".", "-"))
+}
+
+func (c CloudSQLInstance) Name() string {
+	return fmt.Sprintf("cloudsql-%s", strings.ReplaceAll(c.IP, ".", "-"))
 }
 
 // UnionTeamServiceAccountsStatus defines the observed state of UnionTeamServiceAccounts.

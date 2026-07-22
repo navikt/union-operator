@@ -45,6 +45,10 @@ func (r *Reconciler) CleanupUnusedHosts(ctx context.Context) error {
 		return err
 	}
 
+	if err := r.cleanupCloudSQLHosts(ctx, utsas); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -185,7 +189,7 @@ func (r *Reconciler) cleanupExternalHosts(ctx context.Context, utsas datanavnov1
 	}
 
 	gateway := &istionetworking.Gateway{}
-	err := r.Get(ctx, types.NamespacedName{Name: gatewayName, Namespace: EgressNamespace}, gateway)
+	err := r.Get(ctx, types.NamespacedName{Name: externalGatewayName, Namespace: EgressNamespace}, gateway)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			log.Info("Gateway not found, skipping cleanup")
@@ -214,6 +218,54 @@ func (r *Reconciler) cleanupExternalHosts(ctx context.Context, utsas datanavnov1
 			if err := r.Update(ctx, gateway); err != nil {
 				return err
 			}
+		}
+	}
+
+	return nil
+}
+
+func (r *Reconciler) cleanupCloudSQLHosts(ctx context.Context, utsas datanavnov1.UnionTeamServiceAccountsList) error {
+	log := logf.FromContext(ctx)
+
+	cloudSQLHostsInUse := map[string]bool{
+		"*": true, // Always keep the wildcard host for CloudSQL
+	}
+
+	for _, utsa := range utsas.Items {
+		for _, sa := range utsa.Spec.ServiceAccounts {
+			for _, cloudSQL := range sa.CloudSQL {
+				cloudSQLHostsInUse[cloudSQL.Host()] = true
+			}
+		}
+	}
+
+	gateway := &istionetworking.Gateway{}
+	err := r.Get(ctx, types.NamespacedName{Name: cloudSQLGatewayName, Namespace: EgressNamespace}, gateway)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			log.Info("Gateway not found, skipping cleanup")
+			return nil
+		}
+		return err
+	}
+
+	for _, server := range gateway.Spec.Servers {
+		if server.Port.Protocol == tlsProtocol {
+			for _, host := range server.Hosts {
+				if _, ok := cloudSQLHostsInUse[host]; !ok {
+					if err := r.removeExternalHost(ctx, host); err != nil {
+						return err
+					}
+				}
+			}
+		}
+
+		hosts := slices.Collect(maps.Keys(cloudSQLHostsInUse))
+		slices.Sort(hosts)
+		server.Hosts = hosts
+
+		if err := r.Update(ctx, gateway); err != nil {
+			return err
 		}
 	}
 

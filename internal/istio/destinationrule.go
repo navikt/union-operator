@@ -12,50 +12,44 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-func (r *Reconciler) ensureDestinationRule(ctx context.Context, host datanavnov1.Host) error {
+func (r *Reconciler) destinationRuleToGatewayExists(ctx context.Context, hostName string) (bool, error) {
 	dr := &istionetworking.DestinationRuleList{}
 	err := r.List(ctx, dr, inEgressNamespace(), client.MatchingLabels{
-		"host":         host.Host,
+		"host":         hostName,
 		"type":         egressToGatewayLabel,
 		managedByLabel: managedByValue,
 	})
 	if err != nil {
-		return err
+		return false, err
 	}
 
-	if len(dr.Items) < 1 {
-		if err = r.Create(ctx, newDestinationRuleToGateway(host)); err != nil {
-			return err
-		}
-	}
+	return len(dr.Items) > 0, nil
+}
 
-	err = r.List(ctx, dr, inEgressNamespace(), client.MatchingLabels{
-		"host":         host.Host,
+func (r *Reconciler) destinationRuleFromGatewayExists(ctx context.Context, hostName string) (bool, error) {
+	dr := &istionetworking.DestinationRuleList{}
+	err := r.List(ctx, dr, inEgressNamespace(), client.MatchingLabels{
+		"host":         hostName,
 		"type":         egressFromGatewayLabel,
 		managedByLabel: managedByValue,
 	})
 	if err != nil {
-		return err
+		return false, err
 	}
 
-	if len(dr.Items) < 1 {
-		if err = r.Create(ctx, newDestinationRuleFromGateway(host)); err != nil {
-			return err
-		}
-	}
-
-	return nil
+	return len(dr.Items) > 0, nil
 }
 
-func newDestinationRuleToGateway(host datanavnov1.Host) *istionetworking.DestinationRule {
+func newExternalHostDestinationRuleToGateway(host datanavnov1.Host) *istionetworking.DestinationRule {
 	return newDestinationRuleWithSubset(
 		fmt.Sprintf("%s-to-gateway", host.Name()),
 		egressToGatewayLabel,
-		gatewayHost,
-		host,
+		externalGatewayHost,
+		host.Host,
+		host.Name(),
 		&v1alpha3.TrafficPolicy_PortTrafficPolicy{
 			Port: &istionetworkingmodels.PortSelector{
-				Number: 80,
+				Number: httpPort,
 			},
 			Tls: &istionetworkingmodels.ClientTLSSettings{
 				Mode: istionetworkingmodels.ClientTLSSettings_ISTIO_MUTUAL,
@@ -64,15 +58,14 @@ func newDestinationRuleToGateway(host datanavnov1.Host) *istionetworking.Destina
 		})
 }
 
-func newDestinationRuleFromGateway(host datanavnov1.Host) *istionetworking.DestinationRule {
+func newExternalHostDestinationRuleFromGateway(host datanavnov1.Host) *istionetworking.DestinationRule {
 	return newDestinationRule(
 		fmt.Sprintf("%s-from-gateway", host.Name()),
 		egressFromGatewayLabel,
 		host.Host,
-		host,
 		&v1alpha3.TrafficPolicy_PortTrafficPolicy{
 			Port: &istionetworkingmodels.PortSelector{
-				Number: 443,
+				Number: httpsPort,
 			},
 			Tls: &istionetworkingmodels.ClientTLSSettings{
 				Mode: istionetworkingmodels.ClientTLSSettings_SIMPLE,
@@ -81,24 +74,57 @@ func newDestinationRuleFromGateway(host datanavnov1.Host) *istionetworking.Desti
 		})
 }
 
-func newDestinationRule(name, gatewayLabel, targetHost string, host datanavnov1.Host, portTrafficPolicy *v1alpha3.TrafficPolicy_PortTrafficPolicy) *istionetworking.DestinationRule {
+func newCloudSQLDestinationRuleToGateway(cloudSQL datanavnov1.CloudSQLInstance) *istionetworking.DestinationRule {
+	return newDestinationRuleWithSubset(
+		fmt.Sprintf("%s-to-gateway", cloudSQL.Name()),
+		egressToGatewayLabel,
+		cloudSQLGatewayHost,
+		cloudSQL.Host(),
+		cloudSQL.Name(),
+		&v1alpha3.TrafficPolicy_PortTrafficPolicy{
+			Port: &istionetworkingmodels.PortSelector{
+				Number: cloudSQLPort,
+			},
+			Tls: &istionetworkingmodels.ClientTLSSettings{
+				Mode: istionetworkingmodels.ClientTLSSettings_ISTIO_MUTUAL,
+				Sni:  cloudSQL.IP,
+			},
+		})
+}
+
+func newCloudSQLDestinationRuleFromGateway(cloudSQL datanavnov1.CloudSQLInstance) *istionetworking.DestinationRule {
+	return newDestinationRule(
+		fmt.Sprintf("%s-from-gateway", cloudSQL.Name()),
+		egressFromGatewayLabel,
+		cloudSQL.Host(),
+		&v1alpha3.TrafficPolicy_PortTrafficPolicy{
+			Port: &istionetworkingmodels.PortSelector{
+				Number: cloudSQLPort,
+			},
+			Tls: &istionetworkingmodels.ClientTLSSettings{
+				Mode: istionetworkingmodels.ClientTLSSettings_DISABLE,
+			},
+		})
+}
+
+func newDestinationRule(name, gatewayLabel, host string, portTrafficPolicy *v1alpha3.TrafficPolicy_PortTrafficPolicy) *istionetworking.DestinationRule {
 	return &istionetworking.DestinationRule{
 		ObjectMeta: destinationRuleObjectMeta(name, gatewayLabel, host),
 		Spec: istionetworkingmodels.DestinationRule{
-			Host:          targetHost,
+			Host:          host,
 			TrafficPolicy: portLevelTrafficPolicy(portTrafficPolicy),
 		},
 	}
 }
 
-func newDestinationRuleWithSubset(name, gatewayLabel, targetHost string, host datanavnov1.Host, portTrafficPolicy *v1alpha3.TrafficPolicy_PortTrafficPolicy) *istionetworking.DestinationRule {
+func newDestinationRuleWithSubset(name, gatewayLabel, targetHost, host, hostName string, portTrafficPolicy *v1alpha3.TrafficPolicy_PortTrafficPolicy) *istionetworking.DestinationRule {
 	return &istionetworking.DestinationRule{
 		ObjectMeta: destinationRuleObjectMeta(name, gatewayLabel, host),
 		Spec: istionetworkingmodels.DestinationRule{
 			Host: targetHost,
 			Subsets: []*istionetworkingmodels.Subset{
 				{
-					Name:          host.Name(),
+					Name:          hostName,
 					TrafficPolicy: portLevelTrafficPolicy(portTrafficPolicy),
 				},
 			},
@@ -106,11 +132,11 @@ func newDestinationRuleWithSubset(name, gatewayLabel, targetHost string, host da
 	}
 }
 
-func destinationRuleObjectMeta(name, gatewayLabel string, host datanavnov1.Host) v1.ObjectMeta {
+func destinationRuleObjectMeta(name, gatewayLabel string, hostName string) v1.ObjectMeta {
 	return v1.ObjectMeta{
 		Name:      name,
 		Namespace: EgressNamespace,
-		Labels:    map[string]string{"host": host.Host, "type": gatewayLabel, managedByLabel: managedByValue},
+		Labels:    map[string]string{"host": hostName, "type": gatewayLabel, managedByLabel: managedByValue},
 	}
 }
 

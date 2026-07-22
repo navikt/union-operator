@@ -155,6 +155,9 @@ func (r *UnionTeamServiceAccountsReconciler) Reconcile(ctx context.Context, req 
 	if err := istioReconciler.EnsureExternalHosts(ctx, serviceAccounts); err != nil {
 		return ctrl.Result{}, err
 	}
+	if err := istioReconciler.EnsureCloudSQLHosts(ctx, serviceAccounts); err != nil {
+		return ctrl.Result{}, err
+	}
 	if err := istioReconciler.EnsureAuthorizationPolicies(ctx, serviceAccounts); err != nil {
 		return ctrl.Result{}, err
 	}
