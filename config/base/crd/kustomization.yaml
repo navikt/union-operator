@@ -3,6 +3,7 @@
 # It should be run by config/default
 resources:
 - bases/data.nav.no_unionteamserviceaccounts.yaml
+- ../../crd/bases
 # +kubebuilder:scaffold:crdkustomizeresource
 
 patches:
