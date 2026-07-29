@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"slices"
 
-	datanavnov1 "github.com/navikt/union-operator/api/v1alpha1"
 	istionetworkingmodels "istio.io/api/networking/v1beta1"
 	istionetworking "istio.io/client-go/pkg/apis/networking/v1beta1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -15,7 +14,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-func (r *Reconciler) ensureGatewayContainsHost(ctx context.Context, host datanavnov1.Host) error {
+func (r *Reconciler) ensureGatewayExists(ctx context.Context, gatewayName, host string) error {
 	log := logf.FromContext(ctx)
 	gateway := &istionetworking.Gateway{}
 	err := r.Get(ctx, types.NamespacedName{Name: gatewayName, Namespace: EgressNamespace}, gateway)
@@ -25,26 +24,35 @@ func (r *Reconciler) ensureGatewayContainsHost(ctx context.Context, host datanav
 			return err
 		}
 
-		gateway = newGateway(host.Host)
+		gateway = newGateway(gatewayName, host)
 		if err = r.Create(ctx, gateway); err != nil {
 			log.Error(err, fmt.Sprintf("Failed to create Gateway %s in %s namespace", gatewayName, EgressNamespace))
 			return err
 		}
-
-		return nil
 	}
 
-	gateway.Spec.Servers[0].Hosts = appendSortedCompact(gateway.Spec.Servers[0].Hosts, host.Host)
+	return nil
+}
+
+func (r *Reconciler) ensureGatewayContainsHost(ctx context.Context, gatewayName, host string) error {
+	log := logf.FromContext(ctx)
+	gateway := &istionetworking.Gateway{}
+	err := r.Get(ctx, types.NamespacedName{Name: gatewayName, Namespace: EgressNamespace}, gateway)
+	if err != nil {
+		return err
+	}
+
+	gateway.Spec.Servers[0].Hosts = appendSortedCompact(gateway.Spec.Servers[0].Hosts, host)
 
 	if err := r.Update(ctx, gateway); err != nil {
-		log.Error(err, "Failed to patch Gateway", "name", gatewayName)
+		log.Error(err, "Failed to patch Gateway", "name", externalGatewayName)
 		return err
 	}
 
 	return nil
 }
 
-func newGateway(host string) *istionetworking.Gateway {
+func newGateway(gatewayName, host string) *istionetworking.Gateway {
 	return &istionetworking.Gateway{
 		ObjectMeta: v1.ObjectMeta{
 			Name:      gatewayName,

@@ -2,7 +2,6 @@ package istio
 
 import (
 	"context"
-	"fmt"
 
 	datanavnov1 "github.com/navikt/union-operator/api/v1alpha1"
 	istionetworkingmodels "istio.io/api/networking/v1beta1"
@@ -10,31 +9,22 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-func (r *Reconciler) ensureVirtualServiceForHost(ctx context.Context, host *datanavnov1.Host) error {
-	log := logf.FromContext(ctx)
-
+func (r *Reconciler) virtualServiceExists(ctx context.Context, hostName string) (bool, error) {
 	vs := &istionetworking.VirtualService{}
-	err := r.Get(ctx, types.NamespacedName{Name: host.Name(), Namespace: EgressNamespace}, vs)
+	err := r.Get(ctx, types.NamespacedName{Name: hostName, Namespace: EgressNamespace}, vs)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
-			vs = newVirtualServiceForHost(host)
-			if err = r.Create(ctx, vs); err != nil {
-				log.Error(err, fmt.Sprintf("Failed to create VirtualService %s in %s namespace", host.Name(), EgressNamespace))
-				return err
-			}
-			return nil
+			return false, nil
 		}
-		log.Error(err, fmt.Sprintf("Failed to get VirtualService %s in %s namespace", host.Name(), EgressNamespace))
-		return err
+		return false, err
 	}
 
-	return nil
+	return true, nil
 }
 
-func newVirtualServiceForHost(host *datanavnov1.Host) *istionetworking.VirtualService {
+func newVirtualServiceForExternalHost(host *datanavnov1.Host) *istionetworking.VirtualService {
 	return &istionetworking.VirtualService{
 		ObjectMeta: v1.ObjectMeta{
 			Name:      host.Name(),
@@ -48,7 +38,7 @@ func newVirtualServiceForHost(host *datanavnov1.Host) *istionetworking.VirtualSe
 			Hosts: []string{host.Host},
 			Gateways: []string{
 				meshGatewayName,
-				gatewayName,
+				externalGatewayName,
 			},
 			Http: []*istionetworkingmodels.HTTPRoute{
 				{
@@ -61,7 +51,7 @@ func newVirtualServiceForHost(host *datanavnov1.Host) *istionetworking.VirtualSe
 					Route: []*istionetworkingmodels.HTTPRouteDestination{
 						{
 							Destination: &istionetworkingmodels.Destination{
-								Host: gatewayHost,
+								Host: externalGatewayHost,
 								Port: &istionetworkingmodels.PortSelector{
 									Number: 80,
 								},
@@ -73,7 +63,7 @@ func newVirtualServiceForHost(host *datanavnov1.Host) *istionetworking.VirtualSe
 				{
 					Match: []*istionetworkingmodels.HTTPMatchRequest{
 						{
-							Gateways: []string{gatewayName},
+							Gateways: []string{externalGatewayName},
 							Port:     80,
 						},
 					},
@@ -83,6 +73,65 @@ func newVirtualServiceForHost(host *datanavnov1.Host) *istionetworking.VirtualSe
 								Host: host.Host,
 								Port: &istionetworkingmodels.PortSelector{
 									Number: 443,
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+func newVirtualServiceForCloudSQLHost(cloudSQL datanavnov1.CloudSQLInstance) *istionetworking.VirtualService {
+	return &istionetworking.VirtualService{
+		ObjectMeta: v1.ObjectMeta{
+			Name:      cloudSQL.Name(),
+			Namespace: EgressNamespace,
+			Labels: map[string]string{
+				"host":         cloudSQL.Host(),
+				managedByLabel: managedByValue,
+			},
+		},
+		Spec: istionetworkingmodels.VirtualService{
+			Hosts: []string{cloudSQL.Host()},
+			Gateways: []string{
+				meshGatewayName,
+				cloudSQLGatewayName,
+			},
+			Tcp: []*istionetworkingmodels.TCPRoute{
+				{
+					Match: []*istionetworkingmodels.L4MatchAttributes{
+						{
+							Gateways: []string{meshGatewayName},
+							Port:     3307,
+						},
+					},
+					Route: []*istionetworkingmodels.RouteDestination{
+						{
+							Destination: &istionetworkingmodels.Destination{
+								Host: cloudSQLGatewayHost,
+								Port: &istionetworkingmodels.PortSelector{
+									Number: 3307,
+								},
+								Subset: cloudSQL.Name(),
+							},
+						},
+					},
+				},
+				{
+					Match: []*istionetworkingmodels.L4MatchAttributes{
+						{
+							Gateways: []string{cloudSQLGatewayName},
+							Port:     3307,
+						},
+					},
+					Route: []*istionetworkingmodels.RouteDestination{
+						{
+							Destination: &istionetworkingmodels.Destination{
+								Host: cloudSQL.Host(),
+								Port: &istionetworkingmodels.PortSelector{
+									Number: 3307,
 								},
 							},
 						},

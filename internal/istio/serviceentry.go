@@ -11,10 +11,10 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-func (r *Reconciler) serviceEntryExists(ctx context.Context, host datanavnov1.Host) (bool, error) {
+func (r *Reconciler) serviceEntryExists(ctx context.Context, hostLabel string) (bool, error) {
 	log := logf.FromContext(ctx)
 	seList := &istionetworking.ServiceEntryList{}
-	err := r.List(ctx, seList, inEgressNamespace(), matchingHostLabel(host.Host))
+	err := r.List(ctx, seList, inEgressNamespace(), matchingHostLabel(hostLabel))
 	if err != nil {
 		log.Error(err, fmt.Sprintf("Failed to list ServiceEntries in %s namespace", EgressNamespace))
 		return false, err
@@ -23,8 +23,7 @@ func (r *Reconciler) serviceEntryExists(ctx context.Context, host datanavnov1.Ho
 	return len(seList.Items) > 0, nil
 }
 
-func (r *Reconciler) createServiceEntry(ctx context.Context, host datanavnov1.Host) error {
-	se := newHTTPSServiceEntry(host)
+func (r *Reconciler) createServiceEntry(ctx context.Context, se *istionetworking.ServiceEntry) error {
 	return r.Create(ctx, se)
 }
 
@@ -54,6 +53,37 @@ func newHTTPSServiceEntry(host datanavnov1.Host) *istionetworking.ServiceEntry {
 			},
 			Resolution: istionetworkingmodels.ServiceEntry_DNS,
 			Location:   istionetworkingmodels.ServiceEntry_MESH_EXTERNAL,
+			ExportTo:   []string{"*"},
+		},
+	}
+}
+
+func newCloudSQLServiceEntry(cloudSQLInstance datanavnov1.CloudSQLInstance) *istionetworking.ServiceEntry {
+	return &istionetworking.ServiceEntry{
+		ObjectMeta: v1.ObjectMeta{
+			Name:      cloudSQLInstance.Name(),
+			Namespace: EgressNamespace,
+			Labels: map[string]string{
+				"host":         cloudSQLInstance.Host(),
+				managedByLabel: managedByValue,
+			},
+		},
+		Spec: istionetworkingmodels.ServiceEntry{
+			Hosts:     []string{cloudSQLInstance.Host()},
+			Addresses: []string{cloudSQLInstance.IP},
+			Endpoints: []*istionetworkingmodels.WorkloadEntry{
+				{
+					Address: cloudSQLInstance.IP,
+				},
+			},
+			Ports: []*istionetworkingmodels.ServicePort{
+				{
+					Number:   3307,
+					Name:     "tcp-3307",
+					Protocol: "TCP",
+				},
+			},
+			Resolution: istionetworkingmodels.ServiceEntry_STATIC,
 			ExportTo:   []string{"*"},
 		},
 	}
