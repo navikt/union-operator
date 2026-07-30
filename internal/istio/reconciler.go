@@ -129,25 +129,25 @@ func (r *Reconciler) EnsureCloudSQLHosts(ctx context.Context, serviceAccounts []
 func (r *Reconciler) EnsureAuthorizationPolicies(ctx context.Context, serviceAccounts []uniontypes.ServiceAccount) error {
 	for _, sa := range serviceAccounts {
 		for _, host := range sa.ExternalAllowlist {
-			if err := r.ensureAuthorizationPolicyForHost(ctx, sa, &host, nil, httpsProtocol, hostTypeLabelExternal); err != nil {
+			if err := r.ensureAuthorizationPolicyForHost(ctx, sa, &authPolicyData{Host: host.Host, HostName: host.Host, Paths: host.Paths}, nil, httpsProtocol, hostTypeLabelExternal); err != nil {
 				return err
 			}
 		}
 
 		for _, host := range sa.CloudSQL {
-			if err := r.ensureAuthorizationPolicyForHost(ctx, sa, &datanavnov1.Host{Host: host.Host()}, nil, tcpProtocol, hostTypeLabelExternal); err != nil {
+			if err := r.ensureAuthorizationPolicyForHost(ctx, sa, &authPolicyData{Host: host.IP, HostName: host.Host()}, nil, tcpProtocol, hostTypeLabelExternal); err != nil {
 				return err
 			}
 		}
 
 		for _, host := range sa.InternalAllowlist {
 			if hostData, ok := r.OnpremHosts[host.Host]; ok {
-				if err := r.ensureAuthorizationPolicyForHost(ctx, sa, &host, nil, hostData.Protocol, hostTypeLabelInternal); err != nil {
+				if err := r.ensureAuthorizationPolicyForHost(ctx, sa, &authPolicyData{Host: host.Host, HostName: host.Host, Paths: host.Paths}, nil, hostData.Protocol, hostTypeLabelInternal); err != nil {
 					return err
 				}
 				for _, vip := range hostData.VIP {
 					vipHost := datanavnov1.Host{Host: vip}
-					if err := r.ensureAuthorizationPolicyForHost(ctx, sa, &vipHost, &host.Host, hostData.Protocol, hostTypeLabelInternal); err != nil {
+					if err := r.ensureAuthorizationPolicyForHost(ctx, sa, &authPolicyData{Host: vipHost.Host, HostName: vipHost.Host, Paths: vipHost.Paths}, &host.Host, hostData.Protocol, hostTypeLabelInternal); err != nil {
 						return err
 					}
 				}

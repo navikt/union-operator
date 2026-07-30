@@ -24,7 +24,7 @@ func TestNewAuthorizationPolicyHTTPS(t *testing.T) {
 	sa := testServiceAccount()
 	host := &datanavnov1.Host{Host: testHostVG}
 
-	ap, err := newAuthorizationPolicy(sa, host, host.Host, "HTTPS", hostTypeLabelExternal)
+	ap, err := newAuthorizationPolicy(sa, &authPolicyData{Host: host.Host, HostName: host.Host}, host.Host, "HTTPS", hostTypeLabelExternal)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -86,7 +86,7 @@ func TestNewAuthorizationPolicyHTTPSWithPaths(t *testing.T) {
 	sa := testServiceAccount()
 	host := &datanavnov1.Host{Host: "example.com", Paths: []string{"/api", "/v2"}}
 
-	ap, err := newAuthorizationPolicy(sa, host, host.Host, "HTTPS", hostTypeLabelExternal)
+	ap, err := newAuthorizationPolicy(sa, &authPolicyData{Host: host.Host, HostName: host.Host, Paths: host.Paths}, host.Host, "HTTPS", hostTypeLabelExternal)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -105,7 +105,7 @@ func TestNewAuthorizationPolicyTCP(t *testing.T) {
 	sa := testServiceAccount()
 	host := &datanavnov1.Host{Host: "a01dbfl039.adeo.no"}
 
-	ap, err := newAuthorizationPolicy(sa, host, host.Host, "TCP", hostTypeLabelInternal)
+	ap, err := newAuthorizationPolicy(sa, &authPolicyData{Host: host.Host, HostName: host.Host}, host.Host, "TCP", hostTypeLabelInternal)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -134,7 +134,7 @@ func TestNewAuthorizationPolicyProtocolCaseInsensitive(t *testing.T) {
 	host := &datanavnov1.Host{Host: testHostVG}
 
 	for _, proto := range []string{"https", "Https", "HTTPS"} {
-		_, err := newAuthorizationPolicy(sa, host, host.Host, proto, hostTypeLabelExternal)
+		_, err := newAuthorizationPolicy(sa, &authPolicyData{Host: host.Host, HostName: host.Host}, host.Host, proto, hostTypeLabelExternal)
 		if err != nil {
 			t.Errorf("protocol %q: unexpected error: %v", proto, err)
 		}
@@ -145,7 +145,7 @@ func TestNewAuthorizationPolicyUnknownProtocolReturnsError(t *testing.T) {
 	sa := testServiceAccount()
 	host := &datanavnov1.Host{Host: "example.com"}
 
-	_, err := newAuthorizationPolicy(sa, host, host.Host, "UDP", hostTypeLabelExternal)
+	_, err := newAuthorizationPolicy(sa, &authPolicyData{Host: host.Host, HostName: host.Host}, host.Host, "UDP", hostTypeLabelExternal)
 	if err == nil {
 		t.Error("expected error for unknown protocol, got nil")
 	}
@@ -159,7 +159,7 @@ func TestNewAuthorizationPolicyVIPHost(t *testing.T) {
 	vipHost := &datanavnov1.Host{Host: "10.53.20.91"}
 	realHostname := "a01dbfl039.adeo.no"
 
-	ap, err := newAuthorizationPolicy(sa, vipHost, realHostname, "TCP", hostTypeLabelInternal)
+	ap, err := newAuthorizationPolicy(sa, &authPolicyData{Host: vipHost.Host, HostName: vipHost.Host}, realHostname, "TCP", hostTypeLabelInternal)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

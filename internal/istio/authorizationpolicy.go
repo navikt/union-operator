@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strings"
 
-	datanavnov1 "github.com/navikt/union-operator/api/v1alpha1"
 	uniontypes "github.com/navikt/union-operator/internal/types"
 	istiosecuritymodels "istio.io/api/security/v1beta1"
 	istiosecurity "istio.io/client-go/pkg/apis/security/v1beta1"
@@ -15,10 +14,20 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-func (r *Reconciler) ensureAuthorizationPolicyForHost(ctx context.Context, sa uniontypes.ServiceAccount, host *datanavnov1.Host, parentHost *string, protocol, hostTypeLabel string) error {
+type authPolicyData struct {
+	HostName string
+	Host     string
+	Paths    []string
+}
+
+func (a *authPolicyData) Name(sa uniontypes.ServiceAccount) string {
+	return fmt.Sprintf("%s-%s-%s-%s", sa.Project, sa.Domain, sa.Name, strings.ReplaceAll(a.HostName, ".", "-"))
+}
+
+func (r *Reconciler) ensureAuthorizationPolicyForHost(ctx context.Context, sa uniontypes.ServiceAccount, authPolicyData *authPolicyData, parentHost *string, protocol, hostTypeLabel string) error {
 	log := logf.FromContext(ctx)
 
-	parent := host.Host
+	parent := authPolicyData.HostName
 	if parentHost != nil {
 		parent = *parentHost
 	}
@@ -28,7 +37,7 @@ func (r *Reconciler) ensureAuthorizationPolicyForHost(ctx context.Context, sa un
 		"project":         sa.Project,
 		"domain":          sa.Domain,
 		"service-account": sa.Name,
-		"host":            host.Host,
+		"host":            authPolicyData.HostName,
 		"parent-host":     parent,
 	})
 	if err != nil {
@@ -36,7 +45,7 @@ func (r *Reconciler) ensureAuthorizationPolicyForHost(ctx context.Context, sa un
 	}
 
 	if len(apList.Items) < 1 {
-		ap, err := newAuthorizationPolicy(sa, host, parent, protocol, hostTypeLabel)
+		ap, err := newAuthorizationPolicy(sa, authPolicyData, parent, protocol, hostTypeLabel)
 		if err != nil {
 			return err
 		}
@@ -55,7 +64,7 @@ func (r *Reconciler) ensureAuthorizationPolicyForHost(ctx context.Context, sa un
 	return nil
 }
 
-func newAuthorizationPolicy(sa uniontypes.ServiceAccount, host *datanavnov1.Host, parentHost, protocol, hostTypeLabel string) (*istiosecurity.AuthorizationPolicy, error) {
+func newAuthorizationPolicy(sa uniontypes.ServiceAccount, authPolicyData *authPolicyData, parentHost, protocol, hostTypeLabel string) (*istiosecurity.AuthorizationPolicy, error) {
 	var when []*istiosecuritymodels.Condition
 	var to []*istiosecuritymodels.Rule_To
 	switch strings.ToUpper(protocol) {
@@ -63,8 +72,8 @@ func newAuthorizationPolicy(sa uniontypes.ServiceAccount, host *datanavnov1.Host
 		to = []*istiosecuritymodels.Rule_To{
 			{
 				Operation: &istiosecuritymodels.Operation{
-					Hosts: []string{host.Host},
-					Paths: host.Paths,
+					Hosts: []string{authPolicyData.Host},
+					Paths: authPolicyData.Paths,
 				},
 			},
 		}
@@ -72,7 +81,7 @@ func newAuthorizationPolicy(sa uniontypes.ServiceAccount, host *datanavnov1.Host
 		when = []*istiosecuritymodels.Condition{
 			{
 				Key:    "connection.sni",
-				Values: []string{host.Host},
+				Values: []string{authPolicyData.Host},
 			},
 		}
 	default:
@@ -81,13 +90,13 @@ func newAuthorizationPolicy(sa uniontypes.ServiceAccount, host *datanavnov1.Host
 
 	return &istiosecurity.AuthorizationPolicy{
 		ObjectMeta: v1.ObjectMeta{
-			Name:      fmt.Sprintf("%s-%s-%s-%s", sa.Project, sa.Domain, sa.Name, host.Name()),
+			Name:      authPolicyData.Name(sa),
 			Namespace: EgressNamespace,
 			Labels: map[string]string{
 				"project":         sa.Project,
 				"domain":          sa.Domain,
 				"service-account": sa.Name,
-				"host":            host.Host,
+				"host":            authPolicyData.HostName,
 				"host-type":       hostTypeLabel,
 				"parent-host":     parentHost,
 				managedByLabel:    managedByValue,
