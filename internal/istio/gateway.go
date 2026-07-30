@@ -45,7 +45,7 @@ func (r *Reconciler) ensureGatewayContainsHost(ctx context.Context, gatewayName,
 	gateway.Spec.Servers[0].Hosts = appendSortedCompact(gateway.Spec.Servers[0].Hosts, host)
 
 	if err := r.Update(ctx, gateway); err != nil {
-		log.Error(err, "Failed to patch Gateway", "name", externalGatewayName)
+		log.Error(err, "Failed to patch Gateway", "name", gatewayName)
 		return err
 	}
 
