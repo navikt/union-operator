@@ -32,6 +32,7 @@ type allowListTableEntry struct {
 	ServiceAccount    string                 `json:"serviceaccount"`
 	InternalAllowlist []string               `json:"internalallowlist"`
 	ExternalAllowlist []string               `json:"externalallowlist"`
+	CloudSQLAllowlist []string               `json:"cloudsqlallowlist"`
 	GithubActor       string                 `json:"githubactor"`
 	GithubRepo        string                 `json:"githubrepo"`
 	GithubHash        string                 `json:"githubhash"`
@@ -45,6 +46,7 @@ func createAllowlistTableIfNotExists(ctx context.Context, bqClient *bigquery.Cli
 		{Name: "serviceaccount", Type: bigquery.StringFieldType, Required: true},
 		{Name: "internalallowlist", Type: bigquery.StringFieldType, Repeated: true},
 		{Name: "externalallowlist", Type: bigquery.StringFieldType, Repeated: true},
+		{Name: "cloudsqlallowlist", Type: bigquery.StringFieldType, Repeated: true},
 		{Name: "githubactor", Type: bigquery.StringFieldType},
 		{Name: "githubrepo", Type: bigquery.StringFieldType},
 		{Name: "githubhash", Type: bigquery.StringFieldType},
@@ -115,11 +117,15 @@ func (p *Persister) PersistAllowlist(ctx context.Context, utsa *datanavnov1.Unio
 func (p *Persister) extractAllowlistForServiceAccount(tableEntry allowListTableEntry, sa datanavnov1.UnionServiceAccount) allowListTableEntry {
 	internalAllowList := make([]string, 0, len(sa.InternalAllowlist))
 	externalAllowList := make([]string, 0, len(sa.ExternalAllowlist))
+	cloudSQLAllowList := make([]string, 0, len(sa.CloudSQL))
 	for _, host := range sa.InternalAllowlist {
 		internalAllowList = append(internalAllowList, host.Host)
 	}
 	for _, host := range sa.ExternalAllowlist {
 		externalAllowList = append(externalAllowList, host.Host)
+	}
+	for _, host := range sa.CloudSQL {
+		cloudSQLAllowList = append(cloudSQLAllowList, host.IP)
 	}
 
 	return allowListTableEntry{
@@ -128,6 +134,7 @@ func (p *Persister) extractAllowlistForServiceAccount(tableEntry allowListTableE
 		ServiceAccount:    sa.Name,
 		InternalAllowlist: internalAllowList,
 		ExternalAllowlist: externalAllowList,
+		CloudSQLAllowlist: cloudSQLAllowList,
 		GithubActor:       tableEntry.GithubActor,
 		GithubRepo:        tableEntry.GithubRepo,
 		GithubHash:        tableEntry.GithubHash,
