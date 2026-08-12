@@ -98,7 +98,7 @@ func (s *ServiceAccount) GoogleServiceAccountName() string {
 	name := fmt.Sprintf("%s-%s-%s", s.Name, s.Domain, s.Project)
 	hash := sha256.Sum256([]byte(name))
 
-	prefixLength := min(23, len(name))
+	prefixLength := min(22, len(name))
 	return fmt.Sprintf("%s-%s", name[:prefixLength], hex.EncodeToString(hash[:])[:5])
 }
 
