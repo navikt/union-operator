@@ -34,18 +34,18 @@ func TestGoogleServiceAccountName(t *testing.T) {
 			expected: "sa-dev-proj-719a5",
 		},
 		{
-			name:     "name at exactly 23 chars is not truncated",
+			name:     "name at exactly 22 chars is not truncated",
 			saName:   "abcdefg",
 			domain:   "hijklmn",
-			project:  "opqrstu",
-			expected: "abcdefg-hijklmn-opqrstu-ac735",
+			project:  "opqrst",
+			expected: "abcdefg-hijklmn-opqrst-13085",
 		},
 		{
-			name:     "long name is truncated to 23-char prefix",
+			name:     "long name is truncated to 22-char prefix",
 			saName:   "dataplattform",
 			domain:   "development",
 			project:  "nav-data-union-restricted-dev",
-			expected: "dataplattform-developme-a97a3",
+			expected: "dataplattform-developm-a97a3",
 		},
 	}
 
