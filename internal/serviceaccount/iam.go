@@ -102,6 +102,7 @@ func (r *Reconciler) createIAMPolicyMember(
 					},
 				},
 			}
+			setUnionMetadata(member, unionEnv, map[string]string{})
 			err = r.Create(ctx, member)
 			if err != nil {
 				if apierrors.IsAlreadyExists(err) {
