@@ -2,7 +2,6 @@ package types
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/scheme"
@@ -10,7 +9,7 @@ import (
 
 var (
 	GroupVersion  = schema.GroupVersion{Group: "iam.cnrm.cloud.google.com", Version: "v1beta1"}
-	SchemeBuilder = &scheme.Builder{GroupVersion: GroupVersion}
+	SchemeBuilder = &scheme.Builder{GroupVersion: GroupVersion} //nolint:staticcheck
 	AddToScheme   = SchemeBuilder.AddToScheme
 )
 
@@ -177,7 +176,7 @@ func (in *IAMPolicyMemberStatus) DeepCopyInto(out *IAMPolicyMemberStatus) {
 	*out = *in
 	if in.Conditions != nil {
 		in, out := &in.Conditions, &out.Conditions
-		*out = make([]v1.Condition, len(*in))
+		*out = make([]metav1.Condition, len(*in))
 		for i := range *in {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
