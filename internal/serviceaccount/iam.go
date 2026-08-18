@@ -15,10 +15,11 @@ import (
 )
 
 type IAMPolicyMemberOpts struct {
-	Name     string
-	Role     string
-	Kind     string
-	External string
+	Name      string
+	Role      string
+	Kind      string
+	External  string
+	Condition *uniontypes.Condition
 
 	Member     string
 	APIVersion string
@@ -35,10 +36,15 @@ func (r *Reconciler) createIAMPolicyMembers(ctx context.Context, sa uniontypes.S
 	}
 
 	dataBucket := IAMPolicyMemberOpts{
-		Name:       fmt.Sprintf("%s-union-data-bucket-object-admin", sa.Name),
-		Role:       "roles/storage.objectAdmin",
-		Kind:       "StorageBucket",
-		External:   r.DataBucket,
+		Name:     fmt.Sprintf("%s-union-data-bucket-object-admin", sa.Name),
+		Role:     "roles/storage.objectAdmin",
+		Kind:     "StorageBucket",
+		External: r.DataBucket,
+		Condition: &uniontypes.Condition{
+			Title:       "UnionDataBucketAccess",
+			Description: fmt.Sprintf("Allow access to project %s, domain %s in Union data bucket", sa.Project, sa.Domain),
+			Expression:  fmt.Sprintf("resource.name.startsWith(\"projects/_/buckets/%s/objects/metadata/v2/union-nav/%s/%s/\") ||\nresource.name == \"projects/_/buckets/%s\"", r.DataBucket, sa.Project, sa.Domain, r.DataBucket),
+		},
 		APIVersion: "storage.cnrm.cloud.google.com/v1beta1",
 		Member:     sa.GoogleServiceAccountEmail(),
 	}
@@ -92,8 +98,9 @@ func (r *Reconciler) createIAMPolicyMember(
 					},
 				},
 				Spec: uniontypes.IAMPolicyMemberSpec{
-					Member: fmt.Sprintf("serviceAccount:%s", opts.Member),
-					Role:   opts.Role,
+					Member:    fmt.Sprintf("serviceAccount:%s", opts.Member),
+					Role:      opts.Role,
+					Condition: opts.Condition,
 					ResourceRef: uniontypes.ResourceRef{
 						ApiVersion: opts.APIVersion,
 						Kind:       opts.Kind,
