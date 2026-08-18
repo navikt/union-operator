@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	iam "github.com/nais/liberator/pkg/apis/iam.cnrm.cloud.google.com/v1beta1"
 	uniontypes "github.com/navikt/union-operator/internal/types"
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -73,7 +72,7 @@ func (r *Reconciler) createIAMPolicyMember(
 	opts IAMPolicyMemberOpts,
 ) error {
 	log := logf.FromContext(ctx)
-	existing := &iam.IAMPolicyMember{}
+	existing := &uniontypes.IAMPolicyMember{}
 	err := r.Get(
 		ctx,
 		types.NamespacedName{
@@ -84,7 +83,7 @@ func (r *Reconciler) createIAMPolicyMember(
 	)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
-			member := &iam.IAMPolicyMember{
+			member := &uniontypes.IAMPolicyMember{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      opts.Name,
 					Namespace: unionEnv.Namespace(),
@@ -92,10 +91,10 @@ func (r *Reconciler) createIAMPolicyMember(
 						"cnrm.cloud.google.com/project-id": unionEnv.GCPProjectName,
 					},
 				},
-				Spec: iam.IAMPolicyMemberSpec{
+				Spec: uniontypes.IAMPolicyMemberSpec{
 					Member: fmt.Sprintf("serviceAccount:%s", opts.Member),
 					Role:   opts.Role,
-					ResourceRef: iam.ResourceRef{
+					ResourceRef: uniontypes.ResourceRef{
 						ApiVersion: opts.APIVersion,
 						Kind:       opts.Kind,
 						External:   &opts.External,
@@ -130,7 +129,7 @@ func (r *Reconciler) reconcileServiceAccountForDomain(ctx context.Context, sa un
 func (r *Reconciler) reconcileIAMServiceAccount(ctx context.Context, sa uniontypes.ServiceAccount) error {
 	log := logf.FromContext(ctx)
 
-	iamServiceAccount := &iam.IAMServiceAccount{
+	iamServiceAccount := &uniontypes.IAMServiceAccount{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      sa.GoogleServiceAccountName(),
 			Namespace: sa.Namespace(),

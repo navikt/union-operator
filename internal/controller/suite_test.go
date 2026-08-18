@@ -35,8 +35,8 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	iam "github.com/nais/liberator/pkg/apis/iam.cnrm.cloud.google.com/v1beta1"
 	datanavnov1 "github.com/navikt/union-operator/api/v1alpha1"
+	"github.com/navikt/union-operator/internal/types"
 	istionetworking "istio.io/client-go/pkg/apis/networking/v1beta1"
 	istiosecurity "istio.io/client-go/pkg/apis/security/v1beta1"
 	// +kubebuilder:scaffold:imports
@@ -68,7 +68,7 @@ var _ = BeforeSuite(func() {
 	err = datanavnov1.AddToScheme(scheme.Scheme)
 	Expect(err).NotTo(HaveOccurred())
 
-	err = iam.AddToScheme(scheme.Scheme)
+	err = types.AddToScheme(scheme.Scheme)
 	Expect(err).NotTo(HaveOccurred())
 
 	err = istionetworking.AddToScheme(scheme.Scheme)
