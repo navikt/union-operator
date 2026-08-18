@@ -14,7 +14,7 @@ var (
 )
 
 func init() {
-	SchemeBuilder.Register(&IAMPolicyMember{}, &IAMPolicyMemberList{}, &IAMServiceAccount{})
+	SchemeBuilder.Register(&IAMPolicyMember{}, &IAMPolicyMemberList{}, &IAMServiceAccount{}, &IAMServiceAccountList{})
 }
 
 // Condition is a GCP IAM Condition (see
