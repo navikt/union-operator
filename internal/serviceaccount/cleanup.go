@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"slices"
 
-	iam "github.com/nais/liberator/pkg/apis/iam.cnrm.cloud.google.com/v1beta1"
 	uniontypes "github.com/navikt/union-operator/internal/types"
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -107,7 +106,7 @@ func (r *Reconciler) cleanupServiceAccount(
 		errs = append(errs, err)
 	}
 
-	googleServiceAccount := &iam.IAMServiceAccount{}
+	googleServiceAccount := &uniontypes.IAMServiceAccount{}
 	err := r.Get(
 		ctx,
 		types.NamespacedName{
@@ -150,7 +149,7 @@ func (r *Reconciler) cleanupIAMPolicyMembers(
 
 	var errs []error
 	for _, name := range policyMemberNames {
-		existing := &iam.IAMPolicyMember{}
+		existing := &uniontypes.IAMPolicyMember{}
 		err := r.Get(ctx, types.NamespacedName{
 			Name:      name,
 			Namespace: sa.Namespace(),

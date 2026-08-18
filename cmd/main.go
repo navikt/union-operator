@@ -36,7 +36,6 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
-	iam "github.com/nais/liberator/pkg/apis/iam.cnrm.cloud.google.com/v1beta1"
 	datanavnov1 "github.com/navikt/union-operator/api/v1alpha1"
 	"github.com/navikt/union-operator/internal/controller"
 	"github.com/navikt/union-operator/internal/persist"
@@ -55,9 +54,9 @@ func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 
 	utilruntime.Must(datanavnov1.AddToScheme(scheme))
-	utilruntime.Must(iam.AddToScheme(scheme))
 	utilruntime.Must(istio.AddToScheme(scheme))
 	utilruntime.Must(istiosecurity.AddToScheme(scheme))
+	utilruntime.Must(uniontypes.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
 }
 
