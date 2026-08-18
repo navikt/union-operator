@@ -47,7 +47,13 @@ help: ## Display this help.
 
 .PHONY: manifests
 manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and CustomResourceDefinition objects.
-	"$(CONTROLLER_GEN)" rbac:roleName=manager-role crd webhook paths="./api/..." output:crd:artifacts:config=config/crd/bases
+	# rbac/webhook markers live throughout the module (e.g. internal/controller), so scan everything.
+	"$(CONTROLLER_GEN)" rbac:roleName=manager-role webhook paths="./..."
+	# crd generation is scoped to ./api/... only: this project's own CRDs live there.
+	# internal/types mirrors external CRDs (owned by GCP Config Connector) that we don't
+	# own/generate; scanning the whole module here would emit bogus CRDs for those types
+	# (see internal/types/iam.go).
+	"$(CONTROLLER_GEN)" crd paths="./api/..." output:crd:artifacts:config=config/crd/bases
 
 .PHONY: generate
 generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
@@ -62,7 +68,7 @@ vet: ## Run go vet against code.
 	go vet ./...
 
 .PHONY: test
-test: manifests generate fmt vet setup-envtest istio-crds ## Run tests.
+test: manifests generate fmt vet setup-envtest istio-crds config-connector-crds ## Run tests.
 	KUBEBUILDER_ASSETS="$(shell "$(ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(LOCALBIN)" -p path)" go test $$(go list ./... | grep -v /e2e) -coverprofile cover.out
 
 
@@ -238,6 +244,26 @@ $(ISTIO_CRDS_DIR):
 	@echo "Downloading Istio CRDs ($(ISTIO_VERSION))..."
 	@curl -sSL "https://raw.githubusercontent.com/istio/api/$(ISTIO_VERSION)/kubernetes/customresourcedefinitions.gen.yaml" \
 		-o "$(ISTIO_CRDS_DIR)/istio-crds.yaml"
+
+# GCP Config Connector CRDs (IAMServiceAccount, IAMPolicyMember) are external CRDs this
+# project doesn't own; internal/types/iam.go mirrors their Go shape for our controller,
+# but envtest needs the actual CRD schema to accept objects of these kinds. Google
+# checks in ready-to-apply, generated CRD manifests per release tag, so we pin a version
+# and download them the same way we do for Istio CRDs above.
+CONFIG_CONNECTOR_VERSION ?= v1.154.1
+CONFIG_CONNECTOR_CRDS_DIR ?= $(shell pwd)/.testdata/crds
+CONFIG_CONNECTOR_CRD_KINDS := iampolicymembers iamserviceaccounts
+
+.PHONY: config-connector-crds
+config-connector-crds: ## Download GCP Config Connector CRDs (IAM) for envtest.
+	@mkdir -p "$(CONFIG_CONNECTOR_CRDS_DIR)"
+	@for crd in $(CONFIG_CONNECTOR_CRD_KINDS); do \
+		file="$(CONFIG_CONNECTOR_CRDS_DIR)/$$crd.iam.cnrm.cloud.google.com.yaml"; \
+		[ -f "$$file" ] && continue; \
+		echo "Downloading Config Connector CRD $$crd ($(CONFIG_CONNECTOR_VERSION))..."; \
+		curl -sSL "https://raw.githubusercontent.com/GoogleCloudPlatform/k8s-config-connector/$(CONFIG_CONNECTOR_VERSION)/config/crds/resources/apiextensions.k8s.io_v1_customresourcedefinition_$$crd.iam.cnrm.cloud.google.com.yaml" \
+			-o "$$file"; \
+	done
 
 # go-install-tool will 'go install' any package with custom target and name of binary, if it doesn't exist
 # $1 - target path with name of binary

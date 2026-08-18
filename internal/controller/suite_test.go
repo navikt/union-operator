@@ -19,9 +19,7 @@ package controller
 import (
 	"context"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -80,13 +78,11 @@ var _ = BeforeSuite(func() {
 	// +kubebuilder:scaffold:scheme
 
 	By("bootstrapping test environment")
-	liberatorCRDPath := resolveModuleCRDPath("github.com/nais/liberator")
 	crdPaths := []string{
 		filepath.Join("..", "..", "config", "crd", "bases"),
+		// .testdata/crds is gitignored; populated at test time by
+		// `make istio-crds config-connector-crds`.
 		filepath.Join("..", "..", ".testdata", "crds"),
-	}
-	if liberatorCRDPath != "" {
-		crdPaths = append(crdPaths, liberatorCRDPath)
 	}
 	testEnv = &envtest.Environment{
 		CRDDirectoryPaths:     crdPaths,
@@ -137,16 +133,4 @@ func getFirstFoundEnvTestBinaryDir() string {
 		}
 	}
 	return ""
-}
-
-// resolveModuleCRDPath uses "go list" to find the on-disk directory of a Go module
-// and returns the path to its config/crd/bases directory.
-func resolveModuleCRDPath(module string) string {
-	cmd := exec.Command("go", "list", "-m", "-f", "{{.Dir}}", module)
-	out, err := cmd.Output()
-	if err != nil {
-		logf.Log.Error(err, "Failed to resolve module directory", "module", module)
-		return ""
-	}
-	return filepath.Join(strings.TrimSpace(string(out)), "config", "crd", "bases")
 }
