@@ -15,7 +15,7 @@ var (
 )
 
 func init() {
-	SchemeBuilder.Register(&IAMPolicyMember{}, &IAMPolicyMemberList{})
+	SchemeBuilder.Register(&IAMPolicyMember{}, &IAMPolicyMemberList{}, &IAMServiceAccount{})
 }
 
 // Condition is a GCP IAM Condition (see
@@ -129,6 +129,11 @@ func (in *IAMPolicyMember) DeepCopyObject() runtime.Object {
 
 func (in *IAMPolicyMemberSpec) DeepCopyInto(out *IAMPolicyMemberSpec) {
 	*out = *in
+	if in.Condition != nil {
+		in, out := &in.Condition, &out.Condition
+		*out = new(Condition)
+		**out = **in
+	}
 	in.ResourceRef.DeepCopyInto(&out.ResourceRef)
 }
 
