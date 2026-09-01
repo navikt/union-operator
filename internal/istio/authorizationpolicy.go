@@ -2,6 +2,8 @@ package istio
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"strings"
 
@@ -21,7 +23,11 @@ type authPolicyData struct {
 }
 
 func (a *authPolicyData) Name(sa uniontypes.ServiceAccount) string {
-	return fmt.Sprintf("%s-%s-%s-%s", sa.Project, sa.Domain, sa.Name, strings.ReplaceAll(a.HostName, ".", "-"))
+	name := fmt.Sprintf("%s-%s-%s-%s", sa.Project, sa.Domain, sa.Name, strings.ReplaceAll(a.HostName, ".", "-"))
+	hash := sha256.Sum256([]byte(name))
+
+	prefixLength := min(57, len(name))
+	return fmt.Sprintf("%s-%s", name[:prefixLength], hex.EncodeToString(hash[:])[:5])
 }
 
 func (r *Reconciler) ensureAuthorizationPolicyForHost(ctx context.Context, sa uniontypes.ServiceAccount, authPolicyData *authPolicyData, parentHost *string, protocol, hostTypeLabel string) error {

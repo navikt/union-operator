@@ -29,8 +29,8 @@ func TestNewAuthorizationPolicyHTTPS(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if ap.Name != "my-project-development-my-sa-vg-no" {
-		t.Errorf("expected name %q, got %q", "my-project-development-my-sa-vg-no", ap.Name)
+	if ap.Name != "my-project-development-my-sa-vg-no-fba39" {
+		t.Errorf("expected name %q, got %q", "my-project-development-my-sa-vg-no-fba39", ap.Name)
 	}
 	if ap.Namespace != EgressNamespace {
 		t.Errorf("expected namespace %q, got %q", EgressNamespace, ap.Namespace)
