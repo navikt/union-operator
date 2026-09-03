@@ -43,7 +43,7 @@ func (r *Reconciler) createIAMPolicyMembers(ctx context.Context, sa uniontypes.S
 		Condition: &uniontypes.Condition{
 			Title:       "UnionDataBucketAccess",
 			Description: fmt.Sprintf("Allow access to project %s, domain %s in Union data bucket", sa.Project, sa.Domain),
-			Expression:  fmt.Sprintf("resource.name.startsWith(\"projects/_/buckets/%s/objects/metadata/v2/union-nav/%s/%s/\") ||\nresource.name == \"projects/_/buckets/%s\"", r.DataBucket, sa.Project, sa.Domain, r.DataBucket),
+			Expression:  fmt.Sprintf("resource.name.startsWith(\"projects/_/buckets/%s/objects/metadata/v2/union-nav/%s/%s/\") ||\nresource.name == \"projects/_/buckets/%s\" ||\nresource.name.extract(\"projects/_/buckets/%s/objects/{hash}/union-nav/%s/%s/\") != \"\"", r.DataBucket, sa.Project, sa.Domain, r.DataBucket, r.DataBucket, sa.Project, sa.Domain),
 		},
 		APIVersion: "storage.cnrm.cloud.google.com/v1beta1",
 		Member:     sa.GoogleServiceAccountEmail(),
