@@ -48,6 +48,14 @@ func (r *Reconciler) createIAMPolicyMembers(ctx context.Context, sa uniontypes.S
 		APIVersion: "storage.cnrm.cloud.google.com/v1beta1",
 		Member:     sa.GoogleServiceAccountEmail(),
 	}
+	dataBucketViewer := IAMPolicyMemberOpts{
+		Name:       fmt.Sprintf("%s-union-data-bucket-viewer", sa.Name),
+		Role:       "roles/storage.bucketViewer",
+		Kind:       "StorageBucket",
+		External:   r.DataBucket,
+		APIVersion: "storage.cnrm.cloud.google.com/v1beta1",
+		Member:     sa.GoogleServiceAccountEmail(),
+	}
 	fastRegistrationBucket := IAMPolicyMemberOpts{
 		Name:       fmt.Sprintf("%s-union-fast-registration-bucket-viewer", sa.Name),
 		Role:       "roles/storage.objectViewer",
@@ -60,6 +68,7 @@ func (r *Reconciler) createIAMPolicyMembers(ctx context.Context, sa uniontypes.S
 	policyMembers := []IAMPolicyMemberOpts{
 		workloadIdentity,
 		dataBucket,
+		dataBucketViewer,
 		fastRegistrationBucket,
 	}
 
