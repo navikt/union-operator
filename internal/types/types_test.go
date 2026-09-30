@@ -99,3 +99,11 @@ func TestGoogleServiceAccountEmailFormat(t *testing.T) {
 		t.Errorf("email %q does not start with GSA name %q", email, gsaName)
 	}
 }
+
+func TestGoogleServiceAccountDisplayNameMaxLength(t *testing.T) {
+	sa := makeServiceAccount("super-long-service-account-name", "development", "super-long-project-name", "my-gcp-project")
+	displayName := sa.GoogleServiceAccountDisplayName()
+	if len(displayName) > maxServiceAccountDisplayNameLength {
+		t.Errorf("expected display name length <= %d, got %d", maxServiceAccountDisplayNameLength, len(displayName))
+	}
+}

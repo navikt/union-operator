@@ -162,7 +162,7 @@ func (r *Reconciler) reconcileIAMServiceAccount(ctx context.Context, sa uniontyp
 		setUnionMetadata(iamServiceAccount, sa.UnionEnv, map[string]string{
 			"cnrm.cloud.google.com/project-id": sa.GCPProjectName,
 		})
-		iamServiceAccount.Spec.DisplayName = fmt.Sprintf("Union service account %s for domain %s in project %s", sa.Name, sa.Domain, sa.Project)
+		iamServiceAccount.Spec.DisplayName = sa.GoogleServiceAccountDisplayName()
 		if err := r.Create(ctx, iamServiceAccount); err != nil {
 			if apierrors.IsAlreadyExists(err) {
 				// Stale cache: the object exists but the informer hasn't observed it yet.
