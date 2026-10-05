@@ -13,8 +13,9 @@ import (
 )
 
 const (
-	APIVersion = "data.nav.no/v1"
-	UTSAKind   = "UnionTeamServiceAccounts"
+	APIVersion                         = "data.nav.no/v1"
+	UTSAKind                           = "UnionTeamServiceAccounts"
+	maxServiceAccountDisplayNameLength = 100
 )
 
 type UnionDataplaneConfig struct {
@@ -100,6 +101,11 @@ func (s *ServiceAccount) GoogleServiceAccountName() string {
 
 	prefixLength := min(22, len(name))
 	return fmt.Sprintf("%s-%s", name[:prefixLength], hex.EncodeToString(hash[:])[:5])
+}
+
+func (s *ServiceAccount) GoogleServiceAccountDisplayName() string {
+	displayName := fmt.Sprintf("Union service account (project: %s, domain: %s) %s", s.Project, s.Domain, s.Name)
+	return displayName[:min(maxServiceAccountDisplayNameLength, len(displayName))]
 }
 
 func (s *ServiceAccount) GoogleServiceAccountEmail() string {
