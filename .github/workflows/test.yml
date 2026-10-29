@@ -12,15 +12,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Clone the code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
 
       - name: Cache CRDs
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: .testdata/crds
           key: crds-${{ hashFiles('go.mod', 'Makefile') }}
