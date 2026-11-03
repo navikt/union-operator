@@ -47,4 +47,4 @@ kind: Kustomization
 images:
 - name: controller
   newName: artifacts.data.nav.no/ghcr/navikt/union-operator
-  newTag: "20261103125550"
+  newTag: "20261103130859"
