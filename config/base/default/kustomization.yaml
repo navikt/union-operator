@@ -45,6 +45,6 @@ patches:
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 images:
-- name: controller
+- name: artifacts.data.nav.no/ghcr/navikt/union-operator
   newName: artifacts.data.nav.no/ghcr/navikt/union-operator
   newTag: "20261103130859"
