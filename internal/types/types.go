@@ -16,6 +16,7 @@ const (
 	APIVersion                         = "data.nav.no/v1"
 	UTSAKind                           = "UnionTeamServiceAccounts"
 	maxServiceAccountDisplayNameLength = 100
+	akImagePullSecretName              = "ak-registry-pull-secret"
 )
 
 type UnionDataplaneConfig struct {
@@ -58,6 +59,10 @@ type UTSAOwnerReference struct {
 type ServiceAccount struct {
 	datanavnov1.UnionServiceAccount
 	*UnionEnv
+}
+
+func (s *ServiceAccount) AKImagePullSecretName() string {
+	return akImagePullSecretName
 }
 
 type UnionEnv struct {

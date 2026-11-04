@@ -197,6 +197,11 @@ func (r *Reconciler) reconcileServiceAccount(ctx context.Context, sa uniontypes.
 			Name:      sa.Name,
 			Namespace: sa.Namespace(),
 		},
+		ImagePullSecrets: []v1.LocalObjectReference{
+			{
+				Name: sa.AKImagePullSecretName(),
+			},
+		},
 	}
 
 	result, err := controllerutil.CreateOrUpdate(ctx, r.Client, k8sSa, func() error {
