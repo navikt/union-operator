@@ -59,7 +59,7 @@ jobs:
       - name: Update kustomization.yaml with new image tag
         working-directory: config/base/default
         run: |
-          kustomize edit set image controller=artifacts.data.nav.no/ghcr/${{ github.repository }}:${{ env.IMAGE_TAG }}
+          kustomize edit set image artifacts.data.nav.no/ghcr/${{ github.repository }}=artifacts.data.nav.no/ghcr/${{ github.repository }}:${{ env.IMAGE_TAG }}
       
           git config --global user.name ${{ github.actor }}
           git config --global user.email "${{ github.actor }}@users.noreply.github.com"

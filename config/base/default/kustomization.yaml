@@ -48,6 +48,3 @@ images:
 - name: artifacts.data.nav.no/ghcr/navikt/union-operator
   newName: artifacts.data.nav.no/ghcr/navikt/union-operator
   newTag: "20261103130859"
-- name: controller
-  newName: artifacts.data.nav.no/ghcr/navikt/union-operator
-  newTag: "20261103135219"
