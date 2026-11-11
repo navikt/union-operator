@@ -43,6 +43,8 @@ type UnionTeamServiceAccountsSpec struct {
 
 type UnionServiceAccount struct {
 	// +required
+	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:Pattern="^[a-z0-9-]+$"
 	Name string `json:"name"`
 	// +optional
 	ExternalAllowlist []Host `json:"externalAllowlist,omitempty"`
