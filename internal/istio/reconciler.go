@@ -139,7 +139,7 @@ func (r *Reconciler) EnsureAuthorizationPolicies(ctx context.Context, serviceAcc
 		}
 
 		for _, host := range sa.CloudSQL {
-			if err := r.ensureAuthorizationPolicyForHost(ctx, sa, &authPolicyData{Host: host.IP, HostName: host.Host()}, nil, tcpProtocol, hostTypeLabelExternal); err != nil {
+			if err := r.ensureAuthorizationPolicyForHost(ctx, sa, &authPolicyData{Host: host.Host(), HostName: host.Host()}, nil, tcpProtocol, hostTypeLabelExternal); err != nil {
 				return err
 			}
 		}
