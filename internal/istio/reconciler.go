@@ -75,7 +75,7 @@ func (r *Reconciler) EnsureExternalHosts(ctx context.Context, serviceAccounts []
 func (r *Reconciler) EnsureCloudSQLHosts(ctx context.Context, serviceAccounts []uniontypes.ServiceAccount) error {
 	for _, sa := range serviceAccounts {
 		for _, cloudSQL := range sa.CloudSQL {
-			if err := r.ensureGatewayContainsHost(ctx, cloudSQLGatewayName, cloudSQL.Host()); err != nil {
+			if err := r.ensureCloudSQLGatewayContainsHost(ctx, cloudSQLGatewayName, cloudSQL.Host()); err != nil {
 				return err
 			}
 

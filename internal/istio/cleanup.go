@@ -249,20 +249,21 @@ func (r *Reconciler) cleanupCloudSQLHosts(ctx context.Context, utsas datanavnov1
 		return err
 	}
 
-	for _, server := range gateway.Spec.Servers {
+	for idx, server := range gateway.Spec.Servers {
 		if server.Port.Protocol == tlsProtocol {
 			for _, host := range server.Hosts {
 				if _, ok := cloudSQLHostsInUse[host]; !ok {
 					if err := r.removeExternalHost(ctx, host); err != nil {
 						return err
 					}
+					gateway.Spec.Servers = append(gateway.Spec.Servers[:idx], gateway.Spec.Servers[idx+1:]...)
 				}
 			}
 		}
 
-		hosts := slices.Collect(maps.Keys(cloudSQLHostsInUse))
-		slices.Sort(hosts)
-		server.Hosts = hosts
+		if len(gateway.Spec.Servers) == 0 {
+			return r.Delete(ctx, gateway)
+		}
 
 		if err := r.Update(ctx, gateway); err != nil {
 			return err

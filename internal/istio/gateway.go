@@ -52,6 +52,40 @@ func (r *Reconciler) ensureGatewayContainsHost(ctx context.Context, gatewayName,
 	return nil
 }
 
+func (r *Reconciler) ensureCloudSQLGatewayContainsHost(ctx context.Context, gatewayName, host string) error {
+	log := logf.FromContext(ctx)
+	gateway := &istionetworking.Gateway{}
+	err := r.Get(ctx, types.NamespacedName{Name: gatewayName, Namespace: EgressNamespace}, gateway)
+	if err != nil {
+		return err
+	}
+
+	for _, server := range gateway.Spec.Servers {
+		if server.Hosts[0] == host {
+			return nil
+		}
+	}
+
+	gateway.Spec.Servers = append(gateway.Spec.Servers, &istionetworkingmodels.Server{
+		Port: &istionetworkingmodels.Port{
+			Number:   3307,
+			Name:     fmt.Sprintf("tls-port-for-%s-3307", host),
+			Protocol: "TLS",
+		},
+		Hosts: []string{host},
+		Tls: &istionetworkingmodels.ServerTLSSettings{
+			Mode: istionetworkingmodels.ServerTLSSettings_ISTIO_MUTUAL,
+		},
+	})
+
+	if err := r.Update(ctx, gateway); err != nil {
+		log.Error(err, "Failed to patch Gateway", "name", gatewayName)
+		return err
+	}
+
+	return nil
+}
+
 func newGateway(gatewayName, host string) *istionetworking.Gateway {
 	return &istionetworking.Gateway{
 		ObjectMeta: v1.ObjectMeta{
