@@ -52,6 +52,26 @@ func (r *Reconciler) ensureGatewayContainsHost(ctx context.Context, gatewayName,
 	return nil
 }
 
+func (r *Reconciler) ensureCloudSQLGatewayExists(ctx context.Context, gatewayName, host string) error {
+	log := logf.FromContext(ctx)
+	gateway := &istionetworking.Gateway{}
+	err := r.Get(ctx, types.NamespacedName{Name: gatewayName, Namespace: EgressNamespace}, gateway)
+	if err != nil {
+		if !apierrors.IsNotFound(err) {
+			log.Error(err, fmt.Sprintf("Failed to get Gateway %s in %s namespace", gatewayName, EgressNamespace))
+			return err
+		}
+
+		gateway = newCloudSQLGateway(gatewayName, host)
+		if err = r.Create(ctx, gateway); err != nil {
+			log.Error(err, fmt.Sprintf("Failed to create Gateway %s in %s namespace", gatewayName, EgressNamespace))
+			return err
+		}
+	}
+
+	return nil
+}
+
 func (r *Reconciler) ensureCloudSQLGatewayContainsHost(ctx context.Context, gatewayName, host string) error {
 	log := logf.FromContext(ctx)
 	gateway := &istionetworking.Gateway{}
@@ -84,6 +104,36 @@ func (r *Reconciler) ensureCloudSQLGatewayContainsHost(ctx context.Context, gate
 	}
 
 	return nil
+}
+
+func newCloudSQLGateway(gatewayName, host string) *istionetworking.Gateway {
+	return &istionetworking.Gateway{
+		ObjectMeta: v1.ObjectMeta{
+			Name:      gatewayName,
+			Namespace: EgressNamespace,
+			Labels: map[string]string{
+				managedByLabel: managedByValue,
+			},
+		},
+		Spec: istionetworkingmodels.Gateway{
+			Selector: map[string]string{
+				"istio": istioGatewaySelector,
+			},
+			Servers: []*istionetworkingmodels.Server{
+				{
+					Port: &istionetworkingmodels.Port{
+						Number:   3307,
+						Name:     fmt.Sprintf("tls-port-for-%s-3307", host),
+						Protocol: "TLS",
+					},
+					Hosts: []string{host},
+					Tls: &istionetworkingmodels.ServerTLSSettings{
+						Mode: istionetworkingmodels.ServerTLSSettings_ISTIO_MUTUAL,
+					},
+				},
+			},
+		},
+	}
 }
 
 func newGateway(gatewayName, host string) *istionetworking.Gateway {
