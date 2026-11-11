@@ -117,6 +117,7 @@ func newCloudSQLGateway(gatewayName, host string) *istionetworking.Gateway {
 		},
 		Spec: istionetworkingmodels.Gateway{
 			Selector: map[string]string{
+				"app":   gatewayName,
 				"istio": istioGatewaySelector,
 			},
 			Servers: []*istionetworkingmodels.Server{

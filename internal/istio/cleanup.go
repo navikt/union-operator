@@ -7,6 +7,7 @@ import (
 	"slices"
 
 	datanavnov1 "github.com/navikt/union-operator/api/v1alpha1"
+	"istio.io/api/networking/v1alpha3"
 	istionetworking "istio.io/client-go/pkg/apis/networking/v1beta1"
 	istiosecurity "istio.io/client-go/pkg/apis/security/v1beta1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -249,22 +250,23 @@ func (r *Reconciler) cleanupCloudSQLHosts(ctx context.Context, utsas datanavnov1
 		return err
 	}
 
-	for idx, server := range gateway.Spec.Servers {
+	gatewayServers := []*v1alpha3.Server{}
+	for _, server := range gateway.Spec.Servers {
 		if server.Port.Protocol == tlsProtocol {
-			for _, host := range server.Hosts {
-				if _, ok := cloudSQLHostsInUse[host]; !ok {
-					if err := r.removeExternalHost(ctx, host); err != nil {
-						return err
-					}
-					gateway.Spec.Servers = append(gateway.Spec.Servers[:idx], gateway.Spec.Servers[idx+1:]...)
+			if _, ok := cloudSQLHostsInUse[server.Hosts[0]]; !ok {
+				if err := r.removeExternalHost(ctx, server.Hosts[0]); err != nil {
+					return err
 				}
+			} else {
+				gatewayServers = append(gatewayServers, server)
 			}
 		}
 
-		if len(gateway.Spec.Servers) == 0 {
+		if len(gatewayServers) == 0 {
 			return r.Delete(ctx, gateway)
 		}
 
+		gateway.Spec.Servers = gatewayServers
 		if err := r.Update(ctx, gateway); err != nil {
 			return err
 		}
