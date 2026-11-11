@@ -258,17 +258,16 @@ func (r *Reconciler) cleanupCloudSQLHosts(ctx context.Context, utsas datanavnov1
 				gatewayServers = append(gatewayServers, server)
 			}
 		}
-
-		if len(gatewayServers) == 0 {
-			return r.Delete(ctx, gateway)
-		}
-
-		gateway.Spec.Servers = gatewayServers
-		if err := r.Update(ctx, gateway); err != nil {
-			return err
-		}
 	}
 
+	if len(gatewayServers) == 0 {
+		return r.Delete(ctx, gateway)
+	}
+
+	gateway.Spec.Servers = gatewayServers
+	if err := r.Update(ctx, gateway); err != nil {
+		return err
+	}
 	return nil
 }
 
