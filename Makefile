@@ -53,7 +53,7 @@ manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and Cust
 	# internal/types mirrors external CRDs (owned by GCP Config Connector) that we don't
 	# own/generate; scanning the whole module here would emit bogus CRDs for those types
 	# (see internal/types/iam.go).
-	"$(CONTROLLER_GEN)" crd paths="./api/..." output:crd:artifacts:config=config/crd/bases
+	"$(CONTROLLER_GEN)" crd paths="./api/..." output:crd:artifacts:config=base/config/crd/bases
 
 .PHONY: generate
 generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
@@ -70,7 +70,6 @@ vet: ## Run go vet against code.
 .PHONY: test
 test: manifests generate fmt vet setup-envtest istio-crds config-connector-crds ## Run tests.
 	KUBEBUILDER_ASSETS="$(shell "$(ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(LOCALBIN)" -p path)" go test $$(go list ./... | grep -v /e2e) -coverprofile cover.out
-
 
 .PHONY: lint
 lint: golangci-lint ## Run golangci-lint linter
