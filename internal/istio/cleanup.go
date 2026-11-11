@@ -228,10 +228,7 @@ func (r *Reconciler) cleanupExternalHosts(ctx context.Context, utsas datanavnov1
 func (r *Reconciler) cleanupCloudSQLHosts(ctx context.Context, utsas datanavnov1.UnionTeamServiceAccountsList) error {
 	log := logf.FromContext(ctx)
 
-	cloudSQLHostsInUse := map[string]bool{
-		"*": true, // Always keep the wildcard host for CloudSQL
-	}
-
+	cloudSQLHostsInUse := make(map[string]bool)
 	for _, utsa := range utsas.Items {
 		for _, sa := range utsa.Spec.ServiceAccounts {
 			for _, cloudSQL := range sa.CloudSQL {
