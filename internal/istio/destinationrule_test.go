@@ -163,8 +163,8 @@ func TestNewCloudSQLHostDestinationRuleToGateway(t *testing.T) {
 	if ps.Tls.Mode != istionetworkingmodels.ClientTLSSettings_ISTIO_MUTUAL {
 		t.Errorf("expected ISTIO_MUTUAL, got %v", ps.Tls.Mode)
 	}
-	if ps.Tls.Sni != cloudSQL.IP {
-		t.Errorf("expected SNI %q, got %q", cloudSQL.IP, ps.Tls.Sni)
+	if ps.Tls.Sni != cloudSQL.Host() {
+		t.Errorf("expected SNI %q, got %q", cloudSQL.Host(), ps.Tls.Sni)
 	}
 }
 

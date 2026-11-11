@@ -75,7 +75,11 @@ func (r *Reconciler) EnsureExternalHosts(ctx context.Context, serviceAccounts []
 func (r *Reconciler) EnsureCloudSQLHosts(ctx context.Context, serviceAccounts []uniontypes.ServiceAccount) error {
 	for _, sa := range serviceAccounts {
 		for _, cloudSQL := range sa.CloudSQL {
-			if err := r.ensureGatewayContainsHost(ctx, cloudSQLGatewayName, cloudSQL.Host()); err != nil {
+			if err := r.ensureCloudSQLGatewayExists(ctx, cloudSQLGatewayName, cloudSQL.Host()); err != nil {
+				return err
+			}
+
+			if err := r.ensureCloudSQLGatewayContainsHost(ctx, cloudSQLGatewayName, cloudSQL.Host()); err != nil {
 				return err
 			}
 
@@ -135,7 +139,7 @@ func (r *Reconciler) EnsureAuthorizationPolicies(ctx context.Context, serviceAcc
 		}
 
 		for _, host := range sa.CloudSQL {
-			if err := r.ensureAuthorizationPolicyForHost(ctx, sa, &authPolicyData{Host: host.IP, HostName: host.Host()}, nil, tcpProtocol, hostTypeLabelExternal); err != nil {
+			if err := r.ensureAuthorizationPolicyForHost(ctx, sa, &authPolicyData{Host: host.Host(), HostName: host.Host()}, nil, tcpProtocol, hostTypeLabelExternal); err != nil {
 				return err
 			}
 		}

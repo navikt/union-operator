@@ -7,6 +7,7 @@ import (
 	"slices"
 
 	datanavnov1 "github.com/navikt/union-operator/api/v1alpha1"
+	"istio.io/api/networking/v1alpha3"
 	istionetworking "istio.io/client-go/pkg/apis/networking/v1beta1"
 	istiosecurity "istio.io/client-go/pkg/apis/security/v1beta1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -227,10 +228,7 @@ func (r *Reconciler) cleanupExternalHosts(ctx context.Context, utsas datanavnov1
 func (r *Reconciler) cleanupCloudSQLHosts(ctx context.Context, utsas datanavnov1.UnionTeamServiceAccountsList) error {
 	log := logf.FromContext(ctx)
 
-	cloudSQLHostsInUse := map[string]bool{
-		"*": true, // Always keep the wildcard host for CloudSQL
-	}
-
+	cloudSQLHostsInUse := make(map[string]bool)
 	for _, utsa := range utsas.Items {
 		for _, sa := range utsa.Spec.ServiceAccounts {
 			for _, cloudSQL := range sa.CloudSQL {
@@ -249,26 +247,27 @@ func (r *Reconciler) cleanupCloudSQLHosts(ctx context.Context, utsas datanavnov1
 		return err
 	}
 
+	gatewayServers := []*v1alpha3.Server{}
 	for _, server := range gateway.Spec.Servers {
 		if server.Port.Protocol == tlsProtocol {
-			for _, host := range server.Hosts {
-				if _, ok := cloudSQLHostsInUse[host]; !ok {
-					if err := r.removeExternalHost(ctx, host); err != nil {
-						return err
-					}
+			if _, ok := cloudSQLHostsInUse[server.Hosts[0]]; !ok {
+				if err := r.removeExternalHost(ctx, server.Hosts[0]); err != nil {
+					return err
 				}
+			} else {
+				gatewayServers = append(gatewayServers, server)
 			}
-		}
-
-		hosts := slices.Collect(maps.Keys(cloudSQLHostsInUse))
-		slices.Sort(hosts)
-		server.Hosts = hosts
-
-		if err := r.Update(ctx, gateway); err != nil {
-			return err
 		}
 	}
 
+	if len(gatewayServers) == 0 {
+		return r.Delete(ctx, gateway)
+	}
+
+	gateway.Spec.Servers = gatewayServers
+	if err := r.Update(ctx, gateway); err != nil {
+		return err
+	}
 	return nil
 }
 

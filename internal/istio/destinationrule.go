@@ -87,7 +87,7 @@ func newCloudSQLDestinationRuleToGateway(cloudSQL datanavnov1.CloudSQLInstance) 
 			},
 			Tls: &istionetworkingmodels.ClientTLSSettings{
 				Mode: istionetworkingmodels.ClientTLSSettings_ISTIO_MUTUAL,
-				Sni:  cloudSQL.IP,
+				Sni:  cloudSQL.Host(),
 			},
 		})
 }
