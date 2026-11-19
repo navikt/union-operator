@@ -44,6 +44,35 @@ func (noOpPersister) PersistAllowlist(_ context.Context, _ *datanavnov1.UnionTea
 // Compile-time check.
 var _ persist.AllowlistPersister = noOpPersister{}
 
+var _ = Describe("UnionTeamServiceAccounts validation", func() {
+	DescribeTable("validates service account names", func(name string, valid bool) {
+		resource := &datanavnov1.UnionTeamServiceAccounts{
+			ObjectMeta: metav1.ObjectMeta{
+				GenerateName: "name-validation-",
+				Namespace:    "default",
+			},
+			Spec: datanavnov1.UnionTeamServiceAccountsSpec{
+				Project:         "test-project",
+				Domain:          "test-domain",
+				ServiceAccounts: []datanavnov1.UnionServiceAccount{{Name: name}},
+			},
+		}
+		err := k8sClient.Create(ctx, resource)
+		if valid {
+			Expect(err).NotTo(HaveOccurred())
+			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+		} else {
+			Expect(errors.IsInvalid(err)).To(BeTrue(), "expected validation error, got %v", err)
+		}
+	},
+		Entry("rejects the reserved name", "default", false),
+		Entry("allows the reserved name as a prefix", "default-sa", true),
+		Entry("allows the reserved name as a suffix", "my-default", true),
+		Entry("allows lowercase letters, digits and hyphens", "test-sa-123", true),
+		Entry("rejects disallowed characters", "test_sa", false),
+	)
+})
+
 var _ = Describe("UnionTeamServiceAccounts Controller", func() {
 	Context("When reconciling a resource", func() {
 		const resourceName = "test-resource"

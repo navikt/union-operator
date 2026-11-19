@@ -79,7 +79,7 @@ var _ = BeforeSuite(func() {
 
 	By("bootstrapping test environment")
 	crdPaths := []string{
-		filepath.Join("..", "..", "base", "config", "crd", "bases"),
+		filepath.Join("..", "..", "config", "base", "crd", "bases"),
 		// .testdata/crds is gitignored; populated at test time by
 		// `make istio-crds config-connector-crds`.
 		filepath.Join("..", "..", ".testdata", "crds"),

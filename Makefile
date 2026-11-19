@@ -53,7 +53,7 @@ manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and Cust
 	# internal/types mirrors external CRDs (owned by GCP Config Connector) that we don't
 	# own/generate; scanning the whole module here would emit bogus CRDs for those types
 	# (see internal/types/iam.go).
-	"$(CONTROLLER_GEN)" crd paths="./api/..." output:crd:artifacts:config=base/config/crd/bases
+	"$(CONTROLLER_GEN)" crd paths="./api/..." output:crd:artifacts:config=config/base/crd/bases
 
 .PHONY: generate
 generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
