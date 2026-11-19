@@ -45,6 +45,7 @@ type UnionServiceAccount struct {
 	// +required
 	// +kubebuilder:validation:MaxLength=63
 	// +kubebuilder:validation:Pattern="^[a-z0-9-]+$"
+	// +kubebuilder:validation:XValidation:rule="self != 'default'",message="The name 'default' is reserved"
 	Name string `json:"name"`
 	// +optional
 	ExternalAllowlist []Host `json:"externalAllowlist,omitempty"`
