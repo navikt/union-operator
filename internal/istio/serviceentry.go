@@ -30,10 +30,11 @@ func (r *Reconciler) createServiceEntry(ctx context.Context, se *istionetworking
 func newHTTPSServiceEntry(host datanavnov1.Host) *istionetworking.ServiceEntry {
 	return &istionetworking.ServiceEntry{
 		ObjectMeta: v1.ObjectMeta{
-			Name:      host.Name(),
-			Namespace: EgressNamespace,
+			Name:        host.Name(),
+			Namespace:   EgressNamespace,
+			Annotations: hostAnnotations(host.Host, ""),
 			Labels: map[string]string{
-				"host":         host.Host,
+				"host":         host.LabelValue(),
 				managedByLabel: managedByValue,
 			},
 		},

@@ -15,7 +15,7 @@ import (
 func (r *Reconciler) destinationRuleToGatewayExists(ctx context.Context, hostName string) (bool, error) {
 	dr := &istionetworking.DestinationRuleList{}
 	err := r.List(ctx, dr, inEgressNamespace(), client.MatchingLabels{
-		"host":         hostName,
+		"host":         hostLabelValue(hostName),
 		"type":         egressToGatewayLabel,
 		managedByLabel: managedByValue,
 	})
@@ -29,7 +29,7 @@ func (r *Reconciler) destinationRuleToGatewayExists(ctx context.Context, hostNam
 func (r *Reconciler) destinationRuleFromGatewayExists(ctx context.Context, hostName string) (bool, error) {
 	dr := &istionetworking.DestinationRuleList{}
 	err := r.List(ctx, dr, inEgressNamespace(), client.MatchingLabels{
-		"host":         hostName,
+		"host":         hostLabelValue(hostName),
 		"type":         egressFromGatewayLabel,
 		managedByLabel: managedByValue,
 	})
@@ -134,9 +134,10 @@ func newDestinationRuleWithSubset(name, gatewayLabel, targetHost, host, hostName
 
 func destinationRuleObjectMeta(name, gatewayLabel string, hostName string) v1.ObjectMeta {
 	return v1.ObjectMeta{
-		Name:      name,
-		Namespace: EgressNamespace,
-		Labels:    map[string]string{"host": hostName, "type": gatewayLabel, managedByLabel: managedByValue},
+		Name:        name,
+		Namespace:   EgressNamespace,
+		Labels:      map[string]string{"host": hostLabelValue(hostName), "type": gatewayLabel, managedByLabel: managedByValue},
+		Annotations: hostAnnotations(hostName, ""),
 	}
 }
 

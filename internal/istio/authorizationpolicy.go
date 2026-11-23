@@ -43,8 +43,8 @@ func (r *Reconciler) ensureAuthorizationPolicyForHost(ctx context.Context, sa un
 		"project":         sa.Project,
 		"domain":          sa.Domain,
 		"service-account": sa.Name,
-		"host":            authPolicyData.HostName,
-		"parent-host":     parent,
+		"host":            hostLabelValue(authPolicyData.HostName),
+		"parent-host":     hostLabelValue(parent),
 	})
 	if err != nil {
 		return err
@@ -96,15 +96,16 @@ func newAuthorizationPolicy(sa uniontypes.ServiceAccount, authPolicyData *authPo
 
 	return &istiosecurity.AuthorizationPolicy{
 		ObjectMeta: v1.ObjectMeta{
-			Name:      authPolicyData.Name(sa),
-			Namespace: EgressNamespace,
+			Name:        authPolicyData.Name(sa),
+			Namespace:   EgressNamespace,
+			Annotations: hostAnnotations(authPolicyData.HostName, parentHost),
 			Labels: map[string]string{
 				"project":         sa.Project,
 				"domain":          sa.Domain,
 				"service-account": sa.Name,
-				"host":            authPolicyData.HostName,
+				"host":            hostLabelValue(authPolicyData.HostName),
 				"host-type":       hostTypeLabel,
-				"parent-host":     parentHost,
+				"parent-host":     hostLabelValue(parentHost),
 				managedByLabel:    managedByValue,
 			},
 		},

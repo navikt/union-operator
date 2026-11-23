@@ -172,7 +172,7 @@ func inEgressNamespace() client.InNamespace {
 }
 
 func matchingHostLabel(host string) client.MatchingLabels {
-	return client.MatchingLabels{"host": host}
+	return client.MatchingLabels{"host": hostLabelValue(host)}
 }
 
 func appendSortedCompact(slice []string, val string) []string {

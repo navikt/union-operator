@@ -17,6 +17,8 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"strings"
 
@@ -63,7 +65,25 @@ type Host struct {
 }
 
 func (a Host) Name() string {
+	if len(a.Host) > 63 {
+		return "host-" + a.identifier()
+	}
 	return strings.ReplaceAll(a.Host, ".", "-")
+}
+
+// LabelValue preserves existing host labels and encodes hosts that exceed the
+// Kubernetes label-value limit. The underscore separates this namespace from
+// literal DNS hostnames, which cannot contain underscores.
+func (a Host) LabelValue() string {
+	if len(a.Host) > 63 {
+		return "host_" + a.identifier()
+	}
+	return a.Host
+}
+
+func (a Host) identifier() string {
+	hash := sha256.Sum256([]byte(a.Host))
+	return hex.EncodeToString(hash[:16])
 }
 
 type CloudSQLInstance struct {
