@@ -1,0 +1,114 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: validate-union-service-accounts
+  annotations:
+    policies.kyverno.io/title: Validate Union service account names and allowlist hosts
+    policies.kyverno.io/description: Rejects invalid service account names and hostnames before the operator creates downstream resources. Deployed in dev only.
+spec:
+  validationFailureAction: Enforce
+  failurePolicy: Fail
+  background: false
+  rules:
+    - name: validate-service-account-names
+      match:
+        any:
+          - resources:
+              kinds:
+                - data.nav.no/v1alpha1/UnionTeamServiceAccounts
+              operations:
+                - CREATE
+                - UPDATE
+      preconditions:
+        all:
+          # Do not prevent finalizer cleanup of a previously invalid resource.
+          - key: "{{ request.object.metadata.deletionTimestamp || '' }}"
+            operator: Equals
+            value: ""
+      context:
+        - name: invalidServiceAccountNames
+          variable:
+            jmesPath: >-
+              request.object.spec.serviceAccounts[?!regex_match('^[a-z]([a-z0-9-]{0,61}[a-z0-9])?$', name || '') || name == 'default'].name
+      validate:
+        allowExistingViolations: false
+        message: >-
+          Invalid service account names: {{ invalidServiceAccountNames }}.
+          Use 1-63 characters, start with a lowercase letter, contain only lowercase
+          letters, digits and hyphens, and end with a letter or digit.
+          The name "default" is reserved.
+        deny:
+          conditions:
+            any:
+              - key: "{{ length(invalidServiceAccountNames) }}"
+                operator: GreaterThan
+                value: 0
+    - name: validate-external-hosts
+      match:
+        any:
+          - resources:
+              kinds:
+                - data.nav.no/v1alpha1/UnionTeamServiceAccounts
+              operations:
+                - CREATE
+                - UPDATE
+      preconditions:
+        all:
+          - key: "{{ request.object.metadata.deletionTimestamp || '' }}"
+            operator: Equals
+            value: ""
+      context:
+        - name: invalidExternalHosts
+          variable:
+            # Keep the offending hosts grouped by service account for readable errors.
+            jmesPath: >-
+              request.object.spec.serviceAccounts[].{serviceAccount: name, hosts: externalAllowlist[?!regex_match('^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?([.][a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$', host || '') || length(host || '') > `253`].host} | [?length(hosts || `[]`) > `0`]
+      validate:
+        allowExistingViolations: false
+        message: >-
+          Invalid externalAllowlist hosts: {{ invalidExternalHosts }}.
+          Use a bare lowercase DNS hostname without a port or URL scheme
+          (for example api.example.com instead of api.example.com:443).
+          Hosts must be non-empty, have labels of 1-63 characters, and be at most
+          253 characters in total. Paths, queries, fragments, whitespace, wildcards,
+          and leading or trailing hyphens or dots are not allowed.
+        deny:
+          conditions:
+            any:
+              - key: "{{ length(invalidExternalHosts) }}"
+                operator: GreaterThan
+                value: 0
+    - name: validate-internal-hosts
+      match:
+        any:
+          - resources:
+              kinds:
+                - data.nav.no/v1alpha1/UnionTeamServiceAccounts
+              operations:
+                - CREATE
+                - UPDATE
+      preconditions:
+        all:
+          - key: "{{ request.object.metadata.deletionTimestamp || '' }}"
+            operator: Equals
+            value: ""
+      context:
+        - name: invalidInternalHosts
+          variable:
+            jmesPath: >-
+              request.object.spec.serviceAccounts[].{serviceAccount: name, hosts: internalAllowlist[?!regex_match('^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?([.][a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$', host || '') || length(host || '') > `253`].host} | [?length(hosts || `[]`) > `0`]
+      validate:
+        allowExistingViolations: false
+        message: >-
+          Invalid internalAllowlist hosts: {{ invalidInternalHosts }}.
+          Use a bare lowercase DNS hostname without a port or URL scheme
+          (for example api.example.com instead of api.example.com:443).
+          Hosts must be non-empty, have labels of 1-63 characters, and be at most
+          253 characters in total. Paths, queries, fragments, whitespace, wildcards,
+          and leading or trailing hyphens or dots are not allowed.
+        deny:
+          conditions:
+            any:
+              - key: "{{ length(invalidInternalHosts) }}"
+                operator: GreaterThan
+                value: 0
