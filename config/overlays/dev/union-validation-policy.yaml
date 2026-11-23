@@ -29,14 +29,18 @@ spec:
         - name: invalidServiceAccountNames
           variable:
             jmesPath: >-
-              request.object.spec.serviceAccounts[?!regex_match('^[a-z]([a-z0-9-]{0,61}[a-z0-9])?$', name || '') || name == 'default'].name
+              request.object.spec.serviceAccounts[].{name: name, errors: ([
+                length(name || '') == `0` && 'Name must not be empty.',
+                length(name || '') > `63` && 'Name must be at most 63 characters.',
+                length(name || '') > `0` && !regex_match('^[a-z]', name) && 'Name must start with a lowercase letter.',
+                regex_match('[^a-z0-9-]', name || '') && 'Name must contain only lowercase letters, digits and hyphens.',
+                length(name || '') > `0` && !regex_match('[a-z0-9]$', name) && 'Name must end with a lowercase letter or digit.',
+                name == 'default' && 'The name "default" is reserved.'
+              ] | [?type(@) == 'string'])} | [?length(errors) > `0`]
       validate:
         allowExistingViolations: false
         message: >-
           Invalid service account names: {{ invalidServiceAccountNames }}.
-          Use 1-63 characters, start with a lowercase letter, contain only lowercase
-          letters, digits and hyphens, and end with a letter or digit.
-          The name "default" is reserved.
         deny:
           conditions:
             any:
@@ -58,20 +62,39 @@ spec:
             operator: Equals
             value: ""
       context:
+        - name: externalHosts
+          variable:
+            # Separate the hostname from URL adornments only to diagnose each
+            # violation accurately; invalid input is still rejected, not fixed.
+            jmesPath: >-
+              request.object.spec.serviceAccounts[].{serviceAccount: name, hosts: externalAllowlist[].{
+                host: host,
+                hostname: split(split(split(split(split(host || '', '://')[-1], '/')[0], '?')[0], '#')[0], ':')[0]
+              }}
         - name: invalidExternalHosts
           variable:
-            # Keep the offending hosts grouped by service account for readable errors.
+            # Report only failed checks, keeping hosts grouped by service account.
             jmesPath: >-
-              request.object.spec.serviceAccounts[].{serviceAccount: name, hosts: externalAllowlist[?!regex_match('^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?([.][a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$', host || '') || length(host || '') > `253`].host} | [?length(hosts || `[]`) > `0`]
+              externalHosts[].{serviceAccount: serviceAccount, hosts: hosts[].{host: host, errors: ([
+                contains(host || '', '://') && 'Host must not include a URL scheme; remove the scheme (for example https://).',
+                contains(split(split(split(split(host || '', '://')[-1], '/')[0], '?')[0], '#')[0], ':') && 'Host must not include a port; remove the port suffix (for example :443).',
+                contains(split(host || '', '://')[-1], '/') && 'Host must not include a path; put allowed paths in the separate paths field.',
+                contains(host || '', '?') && 'Host must not include a query string.',
+                contains(host || '', '#') && 'Host must not include a fragment.',
+                length(hostname) == `0` && 'Hostname must not be empty.',
+                regex_match('[A-Z]', hostname) && 'Hostname must be lowercase.',
+                regex_match('[[:space:]]', host || '') && 'Host must not contain whitespace.',
+                contains(hostname, '*') && 'Wildcard hostnames are not supported.',
+                regex_match('[^a-zA-Z0-9.*[:space:]-]', hostname) && 'Hostname contains invalid characters; use letters, digits, dots and hyphens.',
+                regex_match('(^[.]|[.][.]|[.]$)', hostname) && 'Hostname must not contain empty dot-separated segments or start or end with a dot.',
+                regex_match('(^|[.])-|-([.]|$)', hostname) && 'Dot-separated hostname segments must not start or end with a hyphen.',
+                regex_match('[^.]{64}', hostname) && 'A dot-separated hostname segment exceeds the DNS limit of 63 characters; this limit does not apply to the full hostname.',
+                length(hostname) > `253` && 'The full hostname exceeds the DNS limit of 253 characters.'
+              ] | [?type(@) == 'string'])} | [?length(errors) > `0`]} | [?length(hosts || `[]`) > `0`]
       validate:
         allowExistingViolations: false
         message: >-
           Invalid externalAllowlist hosts: {{ invalidExternalHosts }}.
-          Use a bare lowercase DNS hostname without a port or URL scheme
-          (for example api.example.com instead of api.example.com:443).
-          Hosts must be non-empty, have labels of 1-63 characters, and be at most
-          253 characters in total. Paths, queries, fragments, whitespace, wildcards,
-          and leading or trailing hyphens or dots are not allowed.
         deny:
           conditions:
             any:
@@ -93,19 +116,36 @@ spec:
             operator: Equals
             value: ""
       context:
+        - name: internalHosts
+          variable:
+            jmesPath: >-
+              request.object.spec.serviceAccounts[].{serviceAccount: name, hosts: internalAllowlist[].{
+                host: host,
+                hostname: split(split(split(split(split(host || '', '://')[-1], '/')[0], '?')[0], '#')[0], ':')[0]
+              }}
         - name: invalidInternalHosts
           variable:
             jmesPath: >-
-              request.object.spec.serviceAccounts[].{serviceAccount: name, hosts: internalAllowlist[?!regex_match('^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?([.][a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$', host || '') || length(host || '') > `253`].host} | [?length(hosts || `[]`) > `0`]
+              internalHosts[].{serviceAccount: serviceAccount, hosts: hosts[].{host: host, errors: ([
+                contains(host || '', '://') && 'Host must not include a URL scheme; remove the scheme (for example https://).',
+                contains(split(split(split(split(host || '', '://')[-1], '/')[0], '?')[0], '#')[0], ':') && 'Host must not include a port; remove the port suffix (for example :443).',
+                contains(split(host || '', '://')[-1], '/') && 'Host must not include a path; put allowed paths in the separate paths field.',
+                contains(host || '', '?') && 'Host must not include a query string.',
+                contains(host || '', '#') && 'Host must not include a fragment.',
+                length(hostname) == `0` && 'Hostname must not be empty.',
+                regex_match('[A-Z]', hostname) && 'Hostname must be lowercase.',
+                regex_match('[[:space:]]', host || '') && 'Host must not contain whitespace.',
+                contains(hostname, '*') && 'Wildcard hostnames are not supported.',
+                regex_match('[^a-zA-Z0-9.*[:space:]-]', hostname) && 'Hostname contains invalid characters; use letters, digits, dots and hyphens.',
+                regex_match('(^[.]|[.][.]|[.]$)', hostname) && 'Hostname must not contain empty dot-separated segments or start or end with a dot.',
+                regex_match('(^|[.])-|-([.]|$)', hostname) && 'Dot-separated hostname segments must not start or end with a hyphen.',
+                regex_match('[^.]{64}', hostname) && 'A dot-separated hostname segment exceeds the DNS limit of 63 characters; this limit does not apply to the full hostname.',
+                length(hostname) > `253` && 'The full hostname exceeds the DNS limit of 253 characters.'
+              ] | [?type(@) == 'string'])} | [?length(errors) > `0`]} | [?length(hosts || `[]`) > `0`]
       validate:
         allowExistingViolations: false
         message: >-
           Invalid internalAllowlist hosts: {{ invalidInternalHosts }}.
-          Use a bare lowercase DNS hostname without a port or URL scheme
-          (for example api.example.com instead of api.example.com:443).
-          Hosts must be non-empty, have labels of 1-63 characters, and be at most
-          253 characters in total. Paths, queries, fragments, whitespace, wildcards,
-          and leading or trailing hyphens or dots are not allowed.
         deny:
           conditions:
             any:
