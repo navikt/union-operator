@@ -4,7 +4,7 @@ metadata:
   name: validate-union-service-accounts
   annotations:
     policies.kyverno.io/title: Validate Union service account names and allowlist hosts
-    policies.kyverno.io/description: Rejects invalid service account names and hostnames before the operator creates downstream resources. Deployed in dev only.
+    policies.kyverno.io/description: Rejects invalid service account names and hostnames before the operator creates downstream resources. Deployed in dev and prod.
 spec:
   validationFailureAction: Enforce
   failurePolicy: Fail
