@@ -27,10 +27,11 @@ func (r *Reconciler) virtualServiceExists(ctx context.Context, hostName string) 
 func newVirtualServiceForExternalHost(host *datanavnov1.Host) *istionetworking.VirtualService {
 	return &istionetworking.VirtualService{
 		ObjectMeta: v1.ObjectMeta{
-			Name:      host.Name(),
-			Namespace: EgressNamespace,
+			Name:        host.Name(),
+			Namespace:   EgressNamespace,
+			Annotations: hostAnnotations(host.Host, ""),
 			Labels: map[string]string{
-				"host":         host.Host,
+				"host":         host.LabelValue(),
 				managedByLabel: managedByValue,
 			},
 		},
